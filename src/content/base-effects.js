@@ -125,7 +125,9 @@ function executeCard(d,owner,target,context={}){
       break;
 
     case "噤声":
-      rectCells(target,5).forEach(c=>c.spellBlocked=true);
+      rectCells(target,5).forEach(c=>MapRules.tryCellEffect(c,"spell-block",current=>{
+        current.spellBlocked=true;
+      },{source:"card"}));
       break;
 
     case "奥术结晶界":{
@@ -138,7 +140,6 @@ function executeCard(d,owner,target,context={}){
     case "最终论文：永恒结晶":{
       const u=target.id?target:unitAt(target);
       cellsRadius(u.cell,2).filter(c=>!c.spellBlocked).forEach(c=>crystallize(c));
-      if(u.name==="真理之墙")clearWallAura(u);
       u.move=0;u.attack=0;u.eternal=true;
       u.duration=0;u.resource=false;
       u.name="最终论文：永恒结晶";
@@ -165,8 +166,6 @@ function finishSwap(target){
 
 function swapUnits(a,b){
   if(!a||!b)return false;
-  if(a.name==="真理之墙")clearWallAura(a);
-  if(b.name==="真理之墙")clearWallAura(b);
   const ca=a.cell,cb=b.cell;
   if(a.height===1){ca.ground=b;cb.ground=a}
   else{ca.air=b;cb.air=a}

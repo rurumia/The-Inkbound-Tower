@@ -1,0 +1,1263 @@
+《墨缚之塔》代码构建与模块实现方案
+依据：GDD v0.1.0 规则重构稿
+目标引擎：Godot 4.x
+目标平台：桌面端，鼠标 + 键盘
+文档用途：项目立项、代码搭建、任务拆分、验收与后续扩展
+
+============================================================
+一、结论与开发策略
+============================================================
+
+1. 推荐总体架构
+
+采用“纯数据战斗内核 + 用例编排层 + Godot 表现层 + 数据驱动内容层”的四层架构。
+
+- 战斗内核只处理规则、状态和确定性计算，不引用 Node、动画、音频、场景路径或物理回调。
+- 用例编排层接收玩家/AI 命令，完成校验、执行、阶段推进和事件输出。
+- Godot 表现层只负责输入、UI、渲染、动画、音频和把战斗事件播放出来。
+- 内容层保存角色、卡牌、书灵、规则、遭遇和地图配置，新增内容优先加数据，不修改主流程。
+
+GDD 提到 ECS。对独立项目不建议先引入完整通用 ECS 框架。更适合的是“轻量数据导向 ECS”：
+
+- Entity 使用递增 int ID。
+- 地图与高频组件使用连续数组。
+- 书灵等低数量实体使用按 ID 索引的状态对象或组件表。
+- System 是无场景依赖的普通 RefCounted/静态方法。
+- BattleState 是唯一权威状态，任何场景节点都不能成为规则真相来源。
+
+这能获得 ECS 的测试性、确定性和性能，同时避免框架、查询器、生命周期管理带来的额外开发成本。
+
+2. 项目的核心技术原则
+
+- 单一真相源：逻辑状态只存在于 BattleState / RunState，UI 只做投影。
+- 命令驱动：所有操作都转成 BattleCommand，不能由按钮直接改状态。
+- 先校验后提交：无效操作必须做到零副作用。
+- 事件驱动表现：逻辑输出 BattleEvent，动画读取事件，不反向控制逻辑。
+- 确定性：相同初始状态、命令序列与种子必须得到相同结果。
+- 整数优先：墨水使用半单位 int；坐标、时长、优先级、伤害全部使用整数。
+- 配置集中：所有阈值放入 BattleRules，不允许散落魔法数字。
+- 扩展开放、主流程封闭：新增卡牌、状态、书灵、房间时，尽量不修改 TurnFlowSystem。
+- 表现速度与逻辑解耦：1x/2x/3x 只改变事件播放时长，不改变模拟步骤。
+- 先做垂直切片：先验证一场完整小战斗，再扩到 1815 格和 34 张卡。
+
+3. 对当前 GDD 范围的判断
+
+v0.1.0 同时包含大型六边形地图、自动单位 AI、34 张完整卡、三回合敌人意图、狂热自动化、构筑、奖励和房间闭环。它已经接近正式 Demo，而不是普通技术原型。
+
+独立开发应拆成四个可单独验收的版本：
+
+- P0 规则模拟器：无正式 UI，命令行/调试面板可跑完整战斗。
+- P1 战斗垂直切片：完整战斗 UI，3 个基础书灵，8 张重点卡。
+- P2 内容版：补齐 34 张卡、两个角色、敌人意图和狂热。
+- P3 Demo 闭环：主菜单、构筑、房间、奖励、保存、音画与性能优化。
+
+不能一开始同时制作全部卡面、动画和战斗逻辑，否则规则修改会造成大量返工。
+
+============================================================
+二、建议工程目录
+============================================================
+
+res://
+  project.godot
+  addons/
+    （仅放已评估且确实需要的插件）
+
+  app/
+    app_root.gd
+    scene_router.gd
+    game_session.gd
+    app_signals.gd
+
+  core/
+    common/
+      result.gd
+      stable_id.gd
+      deterministic_rng.gd
+      seed_streams.gd
+      game_clock.gd
+    events/
+      game_event.gd
+      event_queue.gd
+    save/
+      save_schema.gd
+      save_migrator.gd
+      save_service.gd
+
+  content/
+    content_database.gd
+    content_validator.gd
+    definitions/
+      battle_rules.gd
+      card_definition.gd
+      spirit_definition.gd
+      role_definition.gd
+      status_definition.gd
+      target_rule.gd
+      effect_definition.gd
+      encounter_definition.gd
+      map_definition.gd
+      reward_pool_definition.gd
+    data/
+      rules/
+      cards/
+        siena/
+        fine/
+      spirits/
+      roles/
+      statuses/
+      encounters/
+      maps/
+      rewards/
+
+  run/
+    model/
+      run_state.gd
+      deck_entry.gd
+      room_state.gd
+    systems/
+      run_generation_system.gd
+      reward_system.gd
+      deck_build_system.gd
+    use_cases/
+      start_run.gd
+      choose_room.gd
+      claim_reward.gd
+      abandon_run.gd
+
+  battle/
+    model/
+      battle_state.gd
+      side_state.gd
+      hex_board.gd
+      spirit_state.gd
+      ink_well_state.gd
+      card_instance.gd
+      status_instance.gd
+      enemy_intent.gd
+      battle_snapshot.gd
+    commands/
+      battle_command.gd
+      play_card_command.gd
+      use_role_skill_command.gd
+      sacrifice_card_command.gd
+      end_turn_command.gd
+    events/
+      battle_event.gd
+      event_types.gd
+    flow/
+      battle_runner.gd
+      turn_flow_system.gd
+      battle_phase.gd
+      command_validator.gd
+      command_executor.gd
+    hex/
+      hex_coord.gd
+      hex_layout.gd
+      hex_topology.gd
+      hex_range.gd
+      hex_pathfinder.gd
+    systems/
+      map_generation_system.gd
+      occupancy_system.gd
+      ink_system.gd
+      card_zone_system.gd
+      target_system.gd
+      card_effect_system.gd
+      status_system.gd
+      spirit_ai_system.gd
+      movement_system.gd
+      paint_system.gd
+      combat_system.gd
+      infiltration_system.gd
+      ink_well_system.gd
+      role_skill_system.gd
+      enemy_intent_system.gd
+      frenzy_system.gd
+      settlement_system.gd
+    effects/
+      effect_context.gd
+      effect_registry.gd
+      effect_executor.gd
+      primitives/
+      special/
+    ai/
+      ai_context.gd
+      lexicographic_score.gd
+      avoidant_policy.gd
+      expansion_policy.gd
+      aggressive_policy.gd
+
+  presentation/
+    battle/
+      battle_scene.tscn
+      battle_presenter.gd
+      battle_input_controller.gd
+      battle_event_player.gd
+      world/
+        scroll_field.gd
+        hex_board_renderer.gd
+        ink_renderer.gd
+        spirit_view.gd
+        target_overlay.gd
+        battle_camera.gd
+      hud/
+        battle_hud.gd
+        hand_view.gd
+        card_view.gd
+        enemy_intent_timeline.gd
+        battle_log_view.gd
+    menu/
+    role_select/
+    deck_builder/
+    room_map/
+    reward/
+    common/
+
+  assets/
+    art/
+    audio/
+    fonts/
+    shaders/
+
+  tests/
+    unit/
+    integration/
+    scenarios/
+    fixtures/
+    performance/
+
+  tools/
+    content_audit/
+    battle_debugger/
+    replay_viewer/
+
+目录规则：
+
+- battle/model 不得引用 presentation。
+- content/definitions 只描述静态内容，不保存单场战斗可变状态。
+- 场景脚本不得自行计算伤害、移动、墨水或胜负。
+- 所有跨层调用方向必须是 presentation -> use case/runner -> core，反向只能通过事件或只读快照。
+- Autoload 控制在少数几个：SceneRouter、GameSession、ContentDatabase、SaveService、AppSignals。战斗系统不要全部注册为单例。
+
+============================================================
+三、核心状态、命令与事件
+============================================================
+
+1. 静态定义与运行时实例分离
+
+CardDefinition（静态 Resource）：
+
+- id: StringName
+- schema_version: int
+- role_id: StringName
+- display_name: String
+- card_type: enum
+- cost_half_units: int
+- target_rule_id: StringName
+- effect_specs: Array[EffectSpec]
+- rules_text_key: StringName
+- keyword_ids: Array[StringName]
+- art_path: String
+- default_auto_priority: int
+- default_sacrifice_protected: bool
+- ai_tags: PackedStringArray
+
+CardInstance（运行时）：
+
+- instance_id: int
+- definition_id: StringName
+- auto_priority: int
+- deck_order: int
+- protected_from_sacrifice: bool
+- temporary_cost_delta: int
+- runtime_tags/statuses
+
+不要把 auto_priority、deck_order 等构筑配置直接写回共享 CardDefinition，否则同一张定义的多份实例会互相污染。
+
+SpiritDefinition 保存基础属性和能力引用；SpiritState 保存当前耐久、位置、高度、出生序号、护盾和持续状态。角色、状态、遭遇同样遵守定义/实例分离。
+
+2. BattleState
+
+BattleState 是可序列化的权威战斗状态，至少包含：
+
+- battle_id / battle_seed
+- rules_id / map_definition_id / encounter_id
+- phase
+- active_side
+- global_turn_index
+- round_index
+- next_entity_id
+- next_birth_order
+- board: HexBoard
+- sides: player/enemy SideState
+- spirits_by_id
+- ink_wells
+- status_store
+- enemy_intent_queue
+- occupied_cell_counts
+- owner_cell_counts
+- rng_stream_states
+- result
+- simulation_revision
+
+BattleState 不保存 Node、Texture、Tween、Callable 指向场景节点或未受控的 RandomNumberGenerator。
+
+3. 命令模型
+
+所有玩家、敌人和狂热行为使用相同命令入口：
+
+- PlayCardCommand(card_instance_id, target_spec)
+- UseRoleSkillCommand(skill_id, target_spec)
+- SacrificeCardCommand(card_instance_id)
+- EndTurnCommand()
+
+处理管线：
+
+输入 -> 构造命令 -> validate(state, command) -> ValidationResult
+     -> execute(state, command) -> BattleEvent[]
+     -> TurnFlow 推进 -> 后续系统事件
+     -> 生成只读 ViewSnapshot -> 表现层播放
+
+ValidationResult 至少包含：
+
+- is_valid
+- reason_code（稳定枚举，不直接依赖中文文案）
+- invalid_cells / invalid_entities
+- payable_cost
+- resolved_target
+
+执行前必须完成完整校验。尤其是费用支付、目标足迹、占用槽和越界校验不能边执行边失败。复杂卡牌可先生成 EffectPlan，再整体校验并提交。
+
+4. 事件模型
+
+BattleEvent 只描述已经发生的事实，例如：
+
+- PhaseChanged
+- CardPlayed / CardSacrificed / CardDrawn / DeckReshuffled
+- InkChanged / InkCapChanged
+- SpiritSpawned / SpiritMoved / SpiritHeightChanged
+- CellOwnerChanged / CellStatusChanged
+- DamageApplied / ShieldConsumed / SpiritDied
+- InfiltrationResolved
+- InkWellStateChanged
+- IntentLocked / IntentFailed
+- FrenzyStarted / SpeedStageChanged
+- BattleEnded
+
+事件包含 event_index、logic_tick、type、source_id、target_id、payload。表现层可以合并事件做动画，但不能删改逻辑结果。
+
+5. 状态事务与回放
+
+开发期每次命令记录：
+
+- 初始 battle_seed
+- command_index
+- command payload
+- 执行后的 state_hash
+- 关键 BattleEvent
+
+出现 AI 或结算 Bug 时，可以通过种子和命令日志复现。正式存档不必保存每个完整快照，只保存 RunState、当前 BattleState 与必要版本号；调试回放可另存命令流。
+
+============================================================
+四、战斗状态机实现
+============================================================
+
+1. 阶段枚举
+
+建议使用明确枚举：
+
+- INITIALIZING
+- TURN_START
+- ACTION_WINDOW
+- SACRIFICE_FOLLOWUP
+- RESOLVING_ACTION
+- SPIRIT_SIMULATION
+- TURN_END_EFFECTS
+- INFILTRATION
+- INK_WELL_CHECK
+- SETTLEMENT_CHECK
+- SWITCH_SIDE
+- BATTLE_ENDED
+
+不使用多个布尔值表达阶段，例如 is_animating、can_play、is_sacrificing 同时拼状态。合法命令由 phase + active_side 统一决定。
+
+2. BattleRunner
+
+BattleRunner 是唯一战斗入口，职责：
+
+- 初始化 BattleState。
+- 接收命令并调用校验器。
+- 调用执行器，收集 BattleEvent。
+- 按固定顺序推进无需输入的阶段。
+- 在玩家输入点暂停逻辑推进。
+- 敌方或狂热阶段自动生成并提交命令。
+- 输出事件批次与只读快照。
+
+BattleRunner 不负责 Tween、等待秒数或播放音效。若表现层需要逐步播放，Runner 可以一次生成完整事件批次，EventPlayer 播放完后再请求下一批；或按逻辑动作分小批生成。无论采用哪种方式，暂停动画不能改变计算结果。
+
+3. 固定系统顺序
+
+回合开始：
+
+1) 设置行动方
+2) 处理该方回合开始状态
+3) 结算墨井/书灵/卡牌产墨
+4) 推进角色技能冷却
+5) 手牌补至上限
+6) 锁定敌方当前意图
+7) 进入操作窗口或狂热自动操作
+
+有效操作后：
+
+1) 提交卡牌/技能/牺牲效果
+2) 完成所有即时效果与死亡清理
+3) 若是首次牺牲，进入 SACRIFICE_FOLLOWUP
+4) 否则锁定操作窗口
+5) 按 birth_order 生成本方存活书灵列表快照
+6) 逐个执行 AI、移动、涂色、触发、攻击与死亡清理
+
+回合结束：
+
+1) 当前方回合结束效果
+2) 持续时间推进与到期处理
+3) 全图浸润
+4) 三口墨井检查
+5) 更新/校验格数统计
+6) 后手结束点执行 >80% 判定
+7) 增加行动序号与完整轮数
+8) 应用 50/70/90 阈值
+9) 第 90 阈值最终格数判定
+10) 切换行动方
+
+计数顺序应写成集成测试，避免第 50、70、90 回合出现 off-by-one。
+
+4. 无效操作与提交规则
+
+- 玩家召唤失败：状态完全不变，只返回 InvalidCommand 反馈；卡仍在手牌。
+- 敌人锁定意图失效：按 GDD 转为两张牺牲流程，不允许重新选目标。
+- 效果要求完整足迹时，先计算全部目标格；任一越界则整个命令无效。
+- 扣费应在校验成功、效果计划可提交后进行。
+- 执行期间若规则允许中途变化，例如推开遇阻，则这属于效果结果，不属于命令失败。
+
+============================================================
+五、六边形地图与性能实现
+============================================================
+
+1. 坐标与索引
+
+逻辑统一使用 Axial(q, r)，渲染输入/输出使用 odd-r(row, col)。所有转换集中在 HexTopology，不允许卡牌或 AI 自行推导奇偶行偏移。
+
+初始化时生成：
+
+- index_to_axial: PackedVector2Array 或自定义两个 PackedInt32Array
+- index_to_row_col
+- coord_key_to_index（只在坐标转索引时使用）
+- neighbors[cell_index * 6 + direction]，越界为 -1
+- left_neighbor_by_direction / right_neighbor_by_direction
+- mirror_index
+- region_id_by_cell
+- edge_distance_by_cell
+
+逻辑热路径尽量使用 cell_index: int，不在每次扫描中反复创建 Vector2i、Dictionary 或 Array。
+
+2. HexBoard 数据布局
+
+1815 格规模适合连续数组：
+
+- owner: PackedByteArray，0/1/2
+- flags: PackedInt32Array，位标记只保存可并存的快速状态
+- ground_occupant: PackedInt32Array，0 表示空
+- air_occupant: PackedInt32Array
+- status_head/status_sources：单独稀疏存储，不给每格创建 Array
+- owner_counts: PackedInt32Array(3)
+- dirty_cells: 位集或 PackedInt32Array
+
+“结晶化、精研、禁咒”等不能只用互斥布尔值。推荐：
+
+- flags 负责快速查询“是否存在某类状态”。
+- CellStatusStore 保存 status_id、source_entity、owner、remaining_turns、stack_rule。
+- 添加/移除最后一个同类状态时同步 flags。
+
+3. 占用系统
+
+OccupancySystem 是唯一能修改 ground_occupant / air_occupant 和 SpiritState.cell_index 的模块。
+
+提供原子方法：
+
+- can_enter(entity_id, cell_index, height)
+- place(entity_id, cell_index, height)
+- move(entity_id, from, to, height)
+- change_height(entity_id, new_height)
+- remove(entity_id)
+- find_nearest_legal(start, height, tie_break_rule)
+
+place/move/change_height 必须同时更新棋盘和实体，不能由两个系统各改一半。Debug 构建中每回合执行一致性断言。
+
+4. 路径与范围
+
+- movement <= 5 的常规书灵优先使用限深 BFS，不必为每个单位维护 Godot AStarGrid2D。
+- 邻接表预计算后，BFS 用复用缓冲区，避免每次分配。
+- 地面/空中分别传入 passability 策略。
+- 范围、半径、连通块、半场和矩形足迹统一放到 HexRange。
+- 最近合法落点使用分层 BFS；同距离按 row、col 稳定排序。
+- 连通块（奥术结晶界）使用 flood fill，平局规则必须配置并测试。
+
+5. 涂色与格数
+
+PaintSystem 只通过 set_owner(cell_index, owner, reason) 修改归属。该方法负责：
+
+- 检查结晶化/禁涂状态。
+- 更新 owner 数组。
+- 增减 owner_counts。
+- 标记 dirty_cells。
+- 输出 CellOwnerChanged 事件。
+
+涂色速率 2/3 的左右侧格使用 movement_direction 的 0..5 方向索引计算，禁止使用屏幕坐标左右。
+
+6. 浸润
+
+每回合扫描 1815 * 6 约一万次邻居读取，成本很低，不需要过早做复杂增量算法。
+
+正确实现：
+
+1) 将 owner 复制到 reusable_snapshot。
+2) 遍历所有格，根据快照统计六邻接。
+3) 将变化写入 reusable_next_owner 或 change_list。
+4) 扫描完成后统一提交变化。
+5) 结晶化/禁涂格跳过。
+
+开发测试加入“正序扫描”和“逆序扫描”结果一致性验证。
+
+7. 墨井生成与归属
+
+- MapDefinition 保存三个区域边界、边缘最小距离、排除出生区和候选格过滤器。
+- MapGenerationSystem 使用 map RNG 流，从每区候选表中稳定抽取一格。
+- 墨井状态单独保存 owner 与 conversion_state，不复用锚点格 owner。
+- 包围检查只看墨井有效相邻格；状态转换用显式状态机：Neutral -> Owned、OwnedByA -> NeutralizingForB -> OwnedByB。
+- 文档中的“两次连续被对方完全包围”需要保存 pending_owner，不能只保存一个 owner。
+
+8. 地图渲染
+
+不要创建 1815 个复杂 HexCell 场景节点。建议：
+
+- HexBoardRenderer 继承 Node2D/Control，自定义 _draw 批量画网格与简单归属。
+- 墨迹需要更丰富效果时，使用 ArrayMesh/MultiMesh + shader，或按 15x10/20x10 分块缓存纹理。
+- 只重绘 dirty chunk；缩放和平移由父 CanvasItem/Camera 完成。
+- 书灵、墨井、目标标记数量较少，可使用独立节点。
+- 鼠标拾取通过“卷轴透视逆变换 -> 局部坐标 -> odd-r/axial -> cell index”，不为每格创建 Area2D。
+- 视口外停止 VFX 和标签更新，但逻辑继续完整模拟。
+
+性能目标建议：
+
+- 逻辑单行动回合（不含表现等待）普通战局 < 16 ms，狂热最坏情况 < 50 ms。
+- 浸润扫描 < 2 ms（发布构建目标，按实际硬件复测）。
+- 战场稳定 60 FPS；3x 时可以缩短/合并动画，不减少逻辑步骤。
+- 无持续增长的对象/事件队列；战斗 90 行动回合后内存回到稳定平台。
+
+============================================================
+六、书灵、AI、移动与战斗
+============================================================
+
+1. 书灵数据
+
+SpiritDefinition：基础攻击、耐久、移动、涂色速率、AI 策略、默认高度、标签和被动能力。
+
+SpiritState：entity_id、definition_id、side、birth_order、cell_index、height、attack、durability、max_durability、movement、paint_rate、shield_layers、remaining_duration、last_move_direction、statuses。
+
+资源书灵和进攻书灵应先统一为同一种实体模型，由 tag/ability 决定是否移动、攻击和产墨。若待确认规则最终把资源书灵定为固定设施，只需配置 movement=0、facility 标签和相应占用规则，不改实体框架。
+
+2. AI 策略
+
+SpiritAISystem 的输出是 SpiritPlan，而不是直接移动实体：
+
+- path: PackedInt32Array
+- target_cell
+- target_entity
+- score_components
+- decision_reason
+
+三个 AI 使用独立策略对象，但共享候选生成、路径、危险图和稳定平局规则。
+
+字典序评分不要用混合浮点权重。使用 int 数组逐项比较：
+
+- Avoidant: [safety, well_approach, new_paint, -path_length]
+- Expansion: [new_paint, well_contribution, -path_length]
+- Aggressive: [can_attack, kill_score, enemy_depth, new_paint]
+
+最后统一比较稳定 cell index/row-col。战斗日志可以输出 score_components，便于验证“可预测的自动化”。
+
+优化方式：
+
+- 每个书灵行动前计算它需要的局部候选，不遍历全部 1815 格的所有路径。
+- 复用 BFS 队列和 visited generation 数组。
+- 敌方距离/危险度可按当前实体位置生成多源距离场，同一书灵行动内复用。
+- AI 结果不得依赖 Dictionary 遍历顺序或场景节点顺序。
+
+3. 移动与触发顺序
+
+每个书灵的执行步骤：
+
+1) 若已死亡/禁行则按规则跳过或生成空计划。
+2) AI 生成路径。
+3) 每一步重新检查目标槽。
+4) OccupancySystem 原子移动。
+5) PaintSystem 按本步方向涂色。
+6) Status/EffectSystem 处理 OnMoved / OnPainted。
+7) 立即清理死亡和失效计划。
+8) 路径结束后选择攻击目标。
+9) CombatSystem 同时结算伤害。
+10) DeathSystem 统一移除并触发明确死亡效果。
+
+出生顺序列表在本方运算阶段开始时按 birth_order 取得。新召唤物本回合是否行动应由统一规则明确；在未确认前把该开关放入 BattleRules/卡牌效果，不暗中猜测。
+
+4. 战斗伤害
+
+CombatSystem 先生成 DamagePacket，再同时提交：
+
+- attacker_damage
+- defender_damage
+- damage_type
+- source tags
+- modifiers
+
+护盾每层抵挡一次完整伤害事件。双方伤害、护盾消耗、耐久变化先计算，再统一标记死亡。死亡效果在双方标记完成后进入效果队列，避免一方先死亡导致另一方伤害消失。
+
+5. 飞行与降落
+
+- 飞行是高度变化 + 状态，不是视觉节点开关。
+- change_height 必须校验空中槽。
+- 飞行期间 PaintSystem 查询有效 paint_rate=0。
+- 飞行免疫攻击由 TargetSystem/CombatRules 统一判断。
+- 降落先查当前地面槽，失败则稳定 BFS 找最近合法格。
+- 所有降落能力监听 HeightChanged(2 -> 1)，由 EffectSystem 触发。
+- last_move_direction 单独保存，用于“正前方”等待确认规则，规则未定时可替换来源策略。
+
+============================================================
+七、卡牌、目标与效果系统
+============================================================
+
+1. 设计目标
+
+34 张卡不能做成 34 个互不相关的 Card Node 脚本。建议约 70%-80% 效果由可组合基础效果完成，特殊牌使用具名执行器。
+
+2. EffectSpec
+
+一个 EffectSpec 建议包含：
+
+- effect_id
+- trigger（OnPlay、TurnStart、TurnEnd、OnMove、OnLand、OnDeath 等）
+- target_selector
+- conditions
+- operations
+- duration
+- stack_rule
+- rng_stream_name
+- failure_policy
+
+基础 Operation：
+
+- SpawnSpirit
+- AddInk
+- ModifyStat
+- ApplyStatus / RemoveStatus
+- Move / Push / Teleport / Swap
+- ChangeHeight
+- PaintCells / ResetNeutral / Crystalize
+- DealDamage / Heal / AddShield
+- SkipTurn
+- RepeatAction
+- CreateAura
+- Draw / Discard / Sacrifice
+- EmitRuleMarker
+
+特殊执行器仅用于确实难以组合或需要高性能算法的牌，例如：
+
+- 护卫大天鹅：径向击退 + 区域重置策略。
+- 乱序风暴：独立随机流、移动、全体降落与范围涂色。
+- 奥术结晶界：半场最大连通块。
+- 最终论文：永久区域状态 + 中心固定实体 + 每回合收益。
+
+特殊执行器仍必须返回 EffectPlan/BattleEvent，不能直接操作 UI 或场景。
+
+3. 目标系统
+
+TargetRule 数据化以下维度：
+
+- target_kind：无目标/格/书灵/区域/两目标
+- allegiance：己方/敌方/任意
+- required_height
+- required_owner
+- range_shape：radius、line、odd_r_rectangle、connected_region、half_field
+- range_value
+- require_full_footprint
+- occupancy_requirement
+- status_requirements
+- max_targets
+
+TargetSystem 同时服务玩家高亮、AI 意图和最终校验。UI 不应另写一份“看起来合法”的逻辑。
+
+4. 效果队列
+
+使用明确队列，不递归直接调用无上限触发：
+
+- enqueue trigger
+- 以 event_index / priority / source_birth_order 排序
+- 执行一个 effect
+- 生成后续 trigger
+- 每个命令设置最大触发深度和最大事件数保护
+- 超限时在开发构建报错并保存回放
+
+触发优先级和同帧顺序必须形成规则文档。至少固定：状态替换、伤害修正、护盾、死亡标记、死亡触发、实体移除的顺序。
+
+5. 卡区系统
+
+每方 SideState 保存 draw_pile、hand、discard_pile 的 card instance ID 数组。
+
+- 洗牌只使用 deck RNG 流。
+- 抽牌/弃牌/洗回通过 CardZoneSystem。
+- 手牌顺序是运行时 UI 顺序，deck_order 是构筑自动优先级平局字段，二者不要混用。
+- 狂热出牌排序键：(auto_priority 升序, deck_order 升序, instance_id 升序)。
+- 狂热牺牲排序键：(auto_priority 降序, deck_order 降序, instance_id 降序)。
+- protected_from_sacrifice=true 永远排除。
+
+6. 八张重点卡实施顺序
+
+按机制覆盖率，而不是按角色顺序实现：
+
+1) 小天鹅信使：资源实体、回合开始、飞行条件、持续时间。
+2) 沉思蜡烛：格状态查询、产墨翻倍。
+3) 禁咒守卫：登场护盾、精研触发、耐久上限修改。
+4) 全体升空：群体选择、飞行持续、临时移动力。
+5) 精准俯冲：目标降落、免费位移、临时攻击力。
+6) 索引重排：确定性随机传送、精研判定、禁行。
+7) 护卫大天鹅：范围、径向击退、遇阻、重置区域。
+8) 奥术结晶界：半场、最大连通块、结晶化、跳过回合。
+
+前 3 张验证生命周期与资源，4-7 验证移动/目标/状态，最后一张验证全图算法和回合控制。
+
+7. 内容校验工具
+
+ContentValidator 在编辑器或 CI 中检查：
+
+- ID 唯一且引用存在。
+- 费用为非负半单位整数。
+- auto_priority 在 0..9。
+- 卡牌有角色、类型、目标规则、文本和卡图占位。
+- 每个 effect_id 已注册。
+- 随机效果声明 RNG 流。
+- 持续效果声明时长单位和到期策略。
+- ACE、飞行、降落、精研、结晶化等关键词引用有效。
+- 34 张卡都能加载、生成实例、通过基础合法性测试。
+
+============================================================
+八、敌人意图、狂热与随机数
+============================================================
+
+1. 随机流
+
+从 battle_seed 派生互不干扰的子流：
+
+- map_generation
+- player_shuffle
+- enemy_shuffle
+- enemy_intent
+- reward
+- card_effect
+- ai_tie_break（原则上尽量不用随机）
+
+不要让“多播放一次特效”或“多抽一次调试随机数”改变地图、奖励或后续意图。子种子可由稳定 hash(battle_seed, stream_name) 生成，并保存每个流的消费状态。
+
+2. 敌人意图
+
+EnemyIntent 保存：
+
+- intent_id
+- source_card/skill
+- locked_target_spec
+- projected_cost_delta
+- summon_cell
+- generated_at_turn
+- execute_at_enemy_turn
+- validation_fingerprint
+
+队列始终保持未来 3 个敌方行动。生成时使用当时状态选定并锁定目标；执行时只校验原目标是否仍有效，不重新优化。
+
+目标失效走专门 IntentFailurePolicy：牺牲该牌 -> 补牌 -> 再按规则牺牲一张 -> 补牌 -> 结束操作。此流程也通过普通命令/事件执行，避免敌人拥有隐藏分支。
+
+3. 狂热
+
+FrenzySystem 只负责选择命令，不直接执行卡牌：
+
+- 依优先级查找第一个 validate 成功的 PlayCardCommand。
+- 没有可打牌时生成 SacrificeCardCommand。
+- 第一次牺牲后只允许第二次牺牲或 EndTurnCommand。
+- 没有可牺牲卡时 EndTurnCommand。
+
+50/70 阈值由 TurnFlow 标记，Presentation 根据 SpeedStage 调整动画时长。逻辑层不使用“等待 1 秒/0.5 秒”。
+
+============================================================
+九、Run、房间、奖励、保存与导航
+============================================================
+
+1. GameSession 与 RunState
+
+GameSession 持有当前 RunState 和可选 BattleSession，不承担具体战斗规则。
+
+RunState 至少包含：
+
+- run_id / run_seed
+- selected_role_id
+- current_deck（CardInstance/DeckEntry）
+- room_index / current_room_id
+- defeated_encounters
+- pending_reward
+- discovered_cards
+- run_rng_states
+- run_version
+
+房间和奖励系统不要直接读取战斗场景节点。BattleEnded 产生 BattleResult，由 GameSession 写回 RunState，再导航至结果/奖励界面。
+
+2. 场景导航
+
+SceneRouter 用明确路由和 payload：
+
+- MAIN_MENU
+- ROLE_SELECT
+- DECK_BUILDER
+- ROOM_MAP
+- BATTLE
+- BATTLE_RESULT
+- REWARD
+
+切换场景时先保存必要状态，再释放旧场景。不要把整个 BattleScene 常驻 Autoload。
+
+3. 奖励系统
+
+RewardSystem 输入 RunState、EncounterDefinition 和 reward RNG 流，输出三个稳定候选：2 张玩家角色池 + 1 张敌人角色池。
+
+奖励卡池不足策略属于 GDD 待确认项。在确认前通过 RewardPoolDefinition.failure_policy 配置，不把某种猜测写死。
+
+4. 存档
+
+建议 JSON 或 Godot Variant 二进制加 schema_version，并为每个顶层对象保存版本。至少分：
+
+- settings_save：音量、显示、输入、辅助功能。
+- profile_save：解锁和统计。
+- active_run_save：当前局进度。
+
+SaveService 采用“写临时文件 -> 校验 -> 原子替换”，并保留上一份备份。每次进入房间、领取奖励和战斗开始/结束时保存；战斗中是否允许继续游戏可在 P3 决定。
+
+============================================================
+十、表现层、UI、动画与音频
+============================================================
+
+1. Presenter 模式
+
+BattlePresenter 订阅 Runner 输出：
+
+- ViewSnapshot 用于刷新静态值和断线恢复式重建。
+- BattleEvent 用于动画、浮字、日志和音效。
+
+UI 按钮只发意图：request_play_card、request_use_skill、request_end_turn。Presenter 构造命令并提交，收到校验结果后显示原因。
+
+2. 动画队列
+
+BattleEventPlayer 按事件类型播放：
+
+- 可并行动画：同一步多格涂色、双方同时伤害。
+- 必须串行动画：出生顺序书灵移动、阶段切换、死亡后下一实体行动。
+- 3x 模式：缩短 duration、合并重复墨迹/产墨提示、禁用长尾音效。
+- “跳过动画”只快速消费事件，不能调用另一套逻辑。
+
+3. 卡牌 UI
+
+CardView 是纯展示组件，通过 CardViewModel 获取：费用、名称、摘要、图、优先级、保护状态与合法状态。
+
+- CardView 固定尺寸，内部区域使用 Container 和最大行数。
+- 手牌用 HandView 管理槽位和抬起动画，拖拽时保留占位。
+- CardInteractionController 统一处理 25%/50% 阈值、右键取消、目标箭头和释放。
+- TargetOverlay 从 TargetSystem 的查询结果显示合法格，不复制规则。
+- 构筑界面可编辑优先级/保护；战斗手牌只读。
+
+4. UI 更新优化
+
+- 不每帧重建全部手牌/HUD，只响应快照 revision 或事件。
+- 百分比由 owner_counts 直接计算，不扫描地图。
+- 战斗日志采用对象池/最大条目数，旧条目归档或丢弃。
+- 意图时间轴复用 3 个固定槽位。
+- Tooltip 延迟创建或复用单实例。
+
+5. 暂停
+
+暂停控制表现时钟、输入和音频总线。由于核心逻辑不依赖帧和 Tween，事件队列停播即可，不会出现暂停中状态继续变化。返回主菜单走明确 AbandonRun/Battle 用例。
+
+============================================================
+十一、测试、调试与验收
+============================================================
+
+1. 测试层级
+
+单元测试：
+
+- 坐标转换、1815 格、邻居、方向左右侧、镜像、范围和边缘。
+- 墨水半单位、上限、牺牲、墨井收益。
+- 卡区抽牌、洗回、少于 5 张。
+- 占用、双高度、落地、墨井地面槽。
+- 同时伤害、护盾、死亡。
+- 浸润快照。
+- 自动优先级和逆序牺牲。
+
+系统集成测试：
+
+- 一次有效操作立即离开操作阶段。
+- 首次牺牲进入受限状态，第二次自动结束。
+- 出生顺序执行，死亡实体不继续行动。
+- 后手结束点的 >80% 判定。
+- 第 50/70/90 行动阈值。
+- 敌人三意图锁定和失效降级。
+- 八张重点卡的跨系统行为。
+
+场景测试：
+
+- 1280x720、1920x1080 和常用宽屏下卷轴/HUD 不重叠。
+- 拖拽、右键取消、快捷键、暂停和目标反馈。
+- 长卡名/长文本不改变卡牌尺寸。
+- 1x/2x/3x 播放后的最终状态哈希一致。
+
+内容测试：
+
+- 34 张卡定义完整。
+- 每张卡至少有：可加载、目标合法/非法、费用不足、边缘、持续到期测试。
+- 重点卡有独立单元 + 战斗集成 + 可见反馈测试。
+
+性能测试：
+
+- 90 行动回合快速模拟。
+- 大量书灵压力场景。
+- 每回合浸润和最大连通块。
+- 3x 连续事件播放。
+- 反复进入/退出战斗的内存泄漏。
+
+2. 必备调试工具
+
+Battle Debugger：
+
+- 直接设置回合、墨水、归属比例和阶段。
+- 放置/删除书灵，切换高度与状态。
+- 单步执行一个系统或一个书灵。
+- 显示 cell index、axial、odd-r、占用和状态来源。
+- 显示 AI 候选和字典序评分。
+- 强制触发第 50/70/90 阈值。
+
+Replay Viewer：
+
+- 输入 seed + command log 重播。
+- 单步查看 BattleEvent。
+- 对比预期/实际 state_hash。
+- 导出最小复现文件。
+
+Content Audit：
+
+- 显示缺字段、无效引用、重复 ID 和未测试卡牌。
+- 可在导出前自动执行。
+
+3. 持续集成建议
+
+每次提交至少运行：
+
+- headless 单元测试。
+- 内容校验。
+- 关键战斗场景固定种子回放。
+- GDScript 静态警告/格式检查（按项目选定工具）。
+
+每个里程碑运行全量集成、性能和 UI 截图检查。
+
+============================================================
+十二、分阶段实施计划
+============================================================
+
+阶段 0：规则冻结与工程基线
+
+交付：
+
+- 确认或配置化 GDD 第 12 章 14 个待定项。
+- 建立项目目录、命名、错误码、事件与测试框架。
+- 建立 BattleRules、ContentDatabase、ContentValidator。
+- 制作 3 个固定种子的验收场景。
+
+退出条件：项目可 headless 启动；无效内容阻止测试通过；所有待定项都有配置字段，未被散落硬编码。
+
+阶段 1：六边形技术原型
+
+交付：
+
+- 60/61 交替行、30 行、1815 格。
+- axial/odd-r 转换、邻居、范围、镜像、拾取。
+- 连续数组棋盘、双高度占用。
+- 批量网格/墨迹渲染、相机平移缩放。
+- 三分区墨井生成。
+
+退出条件：坐标往返全通过；1815 格不卡顿；点击格与显示格一致；固定种子地图一致。
+
+阶段 2：无 UI 战斗内核
+
+交付：
+
+- BattleState、命令、校验、事件、TurnFlow。
+- 墨水、卡区、牺牲、书灵出生顺序。
+- 三类 AI、移动、涂色、战斗、浸润、墨井、胜负。
+- headless 运行至 90 行动回合。
+
+退出条件：固定命令流状态哈希一致；无效操作无副作用；1x/3x 概念上使用同一逻辑结果。
+
+阶段 3：战斗垂直切片
+
+交付：
+
+- BattleScene、HUD、卡牌拖拽、目标、日志、意图时间轴。
+- 角色技能“起风”“精读”。
+- 先完成小天鹅信使、沉思蜡烛、禁咒守卫，再完成其余重点卡。
+- 事件动画和基础音频。
+
+退出条件：玩家可以从开局打到胜负；八张重点卡全部有自动测试和可读反馈；UI 不包含规则副本。
+
+阶段 4：敌人、狂热与完整内容
+
+交付：
+
+- 三回合锁定意图。
+- 第 50/70 狂热与表现加速。
+- 34 张卡全部效果、卡面数据和详情。
+- 内容审计报告。
+
+退出条件：全部卡牌基础测试通过；90 行动回合压力战稳定；相同 seed/命令结果一致。
+
+阶段 5：单局闭环
+
+交付：
+
+- 主菜单、角色选择、构筑、房间地图、结果、三选一奖励。
+- RunState、GameSession、场景导航和主动局存档。
+- 卡牌重排、优先级和牺牲保护编辑。
+
+退出条件：可从主菜单完成“选择角色 -> 构筑 -> 战斗 -> 奖励 -> 下一房间/退出”，重启后关键进度可恢复。
+
+阶段 6：优化、可用性与发布准备
+
+交付：
+
+- 性能剖析与对象分配治理。
+- 分辨率、色觉非颜色提示、字号和长文本验收。
+- 音频拥塞控制、动画跳过/加速。
+- 崩溃日志、版本迁移、导出模板和发布构建。
+
+退出条件：目标机器稳定 60 FPS；90 行动回合无持续内存增长；所有必须规则和闭环验收通过。
+
+工期判断（单名熟悉 Godot 的全职程序，仅供排期）：
+
+- 工程与技术原型：3-5 周。
+- 战斗内核：5-8 周。
+- 战斗 UI 和八张重点卡：5-8 周。
+- 其余卡牌、意图与狂热：5-8 周。
+- 单局闭环、存档和优化：4-7 周。
+
+合计约 22-36 周程序工作量。美术、动画、音频、平衡、QA 不在此估算内。若为业余开发，应该按可用工时换算，不宜照搬自然周。
+
+============================================================
+十三、GDD 待确认项的代码隔离方式
+============================================================
+
+1. 敌人角色匹配
+放入 EncounterDefinition.enemy_role_policy / enemy_role_id。
+
+2. 资源书灵属性与设施性质
+放入 SpiritDefinition；使用 tags、movement、can_attack、occupancy_type 配置。
+
+3. 边缘范围效果
+TargetRule.require_full_footprint 与 out_of_bounds_policy。
+
+4. 未移动时涂色速率 2/3
+BattleRules.stationary_paint_policy。
+
+5. 双方出生点
+MapDefinition.player_spawn_anchor、enemy_spawn_anchor、formation_offsets。
+
+6. Resource 墨井行为
+ExpansionPolicyConfig.well_radius、completion_rule、replan_policy。
+
+7. 技能冷却时序
+SkillDefinition.cooldown、cooldown_tick_phase、tick_on_cast_turn。
+
+8. 护卫大天鹅区域重置
+该卡 SpecialEffect 配置 reset_footprint_policy。
+
+9. 索引重排精研判定
+该卡配置 study_check_point：source/selected/destination。
+
+10. 六边形上的 3x3 / 5x5
+TargetRule.range_shape：odd_r_rectangle 或 hex_radius。
+
+11. 结晶化能否被特殊效果覆盖
+StatusDefinition.priority、removal_tags、override_policy。
+
+12. 奖励池不足
+RewardPoolDefinition.insufficient_pool_policy。
+
+13. “正前方”来源
+SpiritDefinition.facing_policy：last_move/default_side/independent_facing。
+
+14. 资源书灵到期
+SpiritDefinition.expiry_policy：remove/death/retire_without_death_trigger。
+
+这些字段在规则确认前可以使用临时默认值，但测试名称和配置文件必须标注 PROVISIONAL，不能让临时解释变成不可追踪的正式规则。
+
+============================================================
+十四、编码规范与扩展流程
+============================================================
+
+1. 命名
+
+- 静态定义 ID 使用 snake_case StringName，例如 card_siena_swan_messenger。
+- 运行时实体使用 int，不使用节点路径当 ID。
+- System 后缀只用于拥有明确规则职责的无状态/受控状态模块。
+- Controller 处理输入意图，Presenter 更新表现，Service 处理跨场景基础设施。
+- reason_code / event_type 使用稳定英文枚举，中文通过本地化表展示。
+
+2. 依赖
+
+- 禁止 battle/core 访问 get_tree()、场景节点或 UI 单例。
+- 禁止 UI 直接修改 BattleState。
+- 禁止卡牌脚本查找场景节点并执行效果。
+- 禁止动画 finished 信号决定伤害是否发生。
+- 禁止随机函数不声明种子流。
+
+3. 新增普通卡牌流程
+
+1) 创建 CardDefinition 数据。
+2) 组合已有 TargetRule + EffectSpec。
+3) 添加规则文本和卡图占位。
+4) 运行 ContentValidator。
+5) 添加合法、非法、费用、边缘和持续时间测试。
+6) 加入卡池并验证敌人意图/狂热排序。
+
+若必须修改 TurnFlowSystem 才能加入一张普通卡，通常说明效果抽象不够；只有“跳过行动回合”等确实改变流程的机制才允许通过明确的 FlowModifier 接口接入。
+
+4. 新增状态流程
+
+1) 定义状态 ID、叠加、持续单位、触发点和到期策略。
+2) 在 EffectRegistry 注册处理器。
+3) 明确与结晶化、飞行、护盾、禁咒等状态的优先级。
+4) 添加应用、叠加、移除、到期和存档测试。
+
+5. 新增书灵 AI 流程
+
+1) 实现统一 AIStrategy 接口，输出 SpiritPlan。
+2) 使用公共候选、路径与稳定平局工具。
+3) 输出可解释评分。
+4) 添加固定棋盘决策测试和性能预算。
+
+6. 新增房间/遭遇流程
+
+通过 EncounterDefinition 配置角色、卡组、AI 参数、地图和奖励池。RunState 只保存 ID 和运行时进度，场景不硬编码敌人内容。
+
+============================================================
+十五、独立开发中的范围控制建议
+============================================================
+
+必须优先保住：
+
+- 一次决策后自动演算的节奏。
+- 大地图涂色、浸润、墨井争夺。
+- 三类可预测书灵 AI。
+- 两角色的飞行/结晶差异。
+- 敌人三回合意图和狂热自动化。
+- 可复现、可测试的规则内核。
+
+可以延期但不破坏核心验证：
+
+- 完整塔层、事件、商店、精英和首领。
+- 跨局解锁与外观。
+- 手柄和完整按键重映射。
+- 每张卡独立高级动画；先使用统一模板和占位图。
+- 复杂卷轴透视；先确保坐标拾取和可读性，再加视觉变形。
+
+不得为了赶进度牺牲：
+
+- 定义/实例分离。
+- 命令校验的零副作用。
+- BattleState 的唯一所有权。
+- 随机流隔离。
+- 固定系统顺序和回放能力。
+- 重点卡与边界规则测试。
+
+建议每两周只验收一个“玩家可感知的闭环”，例如“打牌 -> 书灵移动 -> 涂色 -> 浸润 -> 切换阵营”，而不是以创建了多少脚本作为进度指标。
+
+============================================================
+十六、项目首批实际任务清单
+============================================================
+
+优先级 A：立即开始
+
+1. 新建 Godot 4.x 工程与上述目录。
+2. 建立 headless 测试入口。
+3. 实现 BattleRules、ContentDatabase 和 ContentValidator。
+4. 实现 HexTopology 与 1815 格索引/邻接缓存。
+5. 实现 HexBoard 连续数组和 OccupancySystem。
+6. 实现 BattleState、Command、ValidationResult、BattleEvent。
+7. 实现 TurnFlowSystem 空状态机并用测试锁定阶段顺序。
+8. 建立 battle_seed 和独立随机流。
+
+优先级 B：第一个可玩战斗
+
+1. 实现墨水、卡区、牺牲和立即补牌。
+2. 实现三个初始书灵与出生顺序。
+3. 实现 AI、移动、涂色、攻击和死亡。
+4. 实现浸润、墨井和胜负。
+5. 建立基础 BattleScene 与批量地图渲染。
+6. 接入 EndTurn 和一张无目标效果牌、一张召唤牌。
+
+优先级 C：垂直切片
+
+1. 完成拖拽目标交互和战斗 HUD。
+2. 完成两个角色技能。
+3. 按“八张重点卡实施顺序”完成八张重点卡。
+4. 完成敌人三回合意图。
+5. 完成第 50/70/90 阈值与回放验证。
+
+首个代码提交不应直接制作 34 张卡。先让 HexTopology、BattleState、命令事务和事件流经受测试，因为之后几乎所有功能都依赖这四部分。
+
+============================================================
+十七、最终验收标准
+============================================================
+
+架构验收：
+
+- 无渲染环境可完成一场战斗。
+- UI 删除或替换不会改变规则结果。
+- 同 seed + 同命令的最终 state_hash 一致。
+- 新增普通卡牌不修改 TurnFlowSystem。
+- 场景树中不存在权威地图归属或书灵逻辑位置。
+
+功能验收：
+
+- GDD 11.5 的必测规则全部自动化或有明确场景验收。
+- 34 张卡完整加载并通过内容审计。
+- 八张重点卡具备三层测试。
+- 主菜单到奖励/下一房间形成完整闭环。
+
+性能验收：
+
+- 1815 格不使用 1815 个复杂交互节点。
+- 90 行动回合快速模拟无明显卡死和持续内存增长。
+- 地图归属更新使用 dirty cells/chunks。
+- 狂热 3x 不改变逻辑结果或随机消费顺序。
+
+维护性验收：
+
+- 所有规则阈值集中配置。
+- 所有随机行为声明随机流。
+- 所有状态有来源、持续时间、叠加与到期策略。
+- 所有无效命令有稳定 reason_code，且不产生副作用。
+- GDD 待确认规则均通过配置隔离，没有隐藏硬编码。
+
+本方案的核心不是追求形式上的“系统越多越好”，而是让战斗规则能被独立运行、验证和复现。对《墨缚之塔》来说，先把确定性战斗内核、六边形数据结构和效果接口做稳，后续增加角色、卡牌、房间和表现才不会反复拆掉已有代码。

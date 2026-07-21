@@ -1,0 +1,23 @@
+# Local assistant and editor metadata
+.agents/
+.codex/
+.vscode/
+.idea/
+
+# Browser smoke-test profiles and generated artifacts
+.chrome-smoke/
+.edge-smoke*/
+.tmp-*
+*.log
+*.dmp
+
+# Dependencies, reports, and local configuration
+node_modules/
+coverage/
+.env
+.env.*
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini

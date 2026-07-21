@@ -72,13 +72,19 @@ const GAME_API={
   showDroneLink(from,to){
     return GameDroneLinkSystem.trigger(B,from,to,()=>drawBattle());
   },
-  protectCell(cell,unit){cell.purified={owner:unit.owner,unitId:unit.id,until:B.global+2}},
+  protectCell(cell,unit){
+    return MapRules.tryCellEffect(cell,"purified",current=>{
+      current.purified={owner:unit.owner,unitId:unit.id,until:B.global+2};
+    },{source:"unit",unit});
+  },
   neutralize(cell,context={source:"card"}){
-    if(cell.spellBlocked&&context.source==="card")return false;
-    cell.owner=0;
-    if(!cell.permanentCrystal){cell.crystal=false;cell.studied=false}
-    B.dirty=true;
-    return true;
+    const changed=MapRules.tryCellEffect(cell,"neutralize",current=>{
+      current.owner=0;
+      current.studied=false;
+      current.permanentStudied=false;
+    },context);
+    if(changed)B.dirty=true;
+    return changed;
   },
   discardOther(s,excluded,reason){
     const candidate=[...s.hand].filter(instance=>instance!==excluded&&!instance.archive&&!instance.protected)
@@ -185,9 +191,6 @@ function removeUnit(u,death=true){
   if(death&&u.name==="奥术记录仪"){
     rectCells(u.cell,3).forEach(x=>crystallize(x));
   }
-  if(death&&u.name==="真理之墙"){
-    clearWallAura(u);
-  }
   if(death)invokeAllUnitEffects(u.owner,"unitDestroyed",{destroyed:u,event:{}});
   addLog(`「${u.name}」${death?"被摧毁":"退场"}。`,"s");
 }
@@ -221,42 +224,35 @@ function createFortification(owner,cell){
   return unit;
 }
 
-function crystallize(cell,wallSource=null){
-  if(!cell)return;
-  if(wallSource===null)cell.permanentCrystal=true;
-  else cell.wallCrystalSources.add(wallSource);
-  cell.crystal=true;
+function crystallize(cell,context={}){
+  if(!cell||cell.crystal)return false;
+  return MapRules.tryCellEffect(cell,"crystallize",current=>{
+    current.permanentCrystal=true;
+    current.crystal=true;
+    B.dirty=true;
+  },context);
 }
 
 function applyWallAura(u){
   rectCells(u.cell,5).forEach(c=>{
-    c.studySources.add(u.id);
-    c.studied=true;
-    crystallize(c,u.id);
+    if(c.crystal)return;
+    markStudied(c,{source:"aura",unit:u});
+    crystallize(c,{source:"aura",unit:u});
   });
 }
 
-function markStudied(cell){
-  if(!cell)return;
-  cell.permanentStudied=true;
-  cell.studied=true;
-}
-
-function clearWallAura(u){
-  B.cells.forEach(c=>{
-    if(!c.studySources.has(u.id)&&!c.wallCrystalSources.has(u.id))return;
-    c.studySources.delete(u.id);
-    c.studied=c.permanentStudied||c.studySources.size>0;
-    c.wallCrystalSources.delete(u.id);
-    c.crystal=c.permanentCrystal||c.wallCrystalSources.size>0;
-  });
+function markStudied(cell,context={source:"skill"}){
+  if(!cell)return false;
+  return MapRules.tryCellEffect(cell,"studied",current=>{
+    current.permanentStudied=true;
+    current.studied=true;
+  },context);
 }
 
 function refreshWallAura(u,move){
-  if(u.name!=="真理之墙")return move();
-  clearWallAura(u);
-  move();
-  applyWallAura(u);
+  const result=move();
+  if(u.name==="真理之墙")applyWallAura(u);
+  return result;
 }
 
 function makeFlying(u,duration=2){

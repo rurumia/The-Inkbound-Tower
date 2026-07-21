@@ -11,7 +11,6 @@ function createCells(){
       const x={
         r,c,owner:0,crystal:false,studied:false,
         permanentCrystal:false,permanentStudied:false,
-        wallCrystalSources:new Set(),studySources:new Set(),
         spellBlocked:false,ground:null,air:null,well:null
       };
       cells.push(x);map.set(key(r,c),x);

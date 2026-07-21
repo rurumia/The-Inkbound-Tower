@@ -124,7 +124,7 @@ function canvasClick(e){
       GameStatusSystem.has(u,"20735.cooling")?"冷却":""].filter(Boolean):[];
     document.getElementById("selectionInfo").innerHTML=u
       ?unitDetailHtml(u,statuses)
-      :`格子 ${c.r},${c.c}<br>归属：${ownerName(c.owner)}<br>${c.crystal?"结晶化 ":""}${c.studied?"精研 ":""}${c.spellBlocked?"噤声":""}`;
+      :`格子 ${c.r},${c.c}<br>归属：${ownerName(c.owner)}<br>${c.crystal?"结晶化 · 不受任何地块效果影响<br>":""}${c.studied?"精研 ":""}${c.spellBlocked?"噤声":""}`;
   }
 }
 

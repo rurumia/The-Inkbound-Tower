@@ -40,7 +40,7 @@ const ROLE_DEFS={
     skill:{id:"closeReading",name:"精读",cooldown:2,
       description:"将半径 1 的完整 7 格设为精研区域，并为区域内己方书灵提供护盾。",
       prompt:"点击己方控制区域中心格。"},
-    traits:["结晶格无法被普通涂色改变","精研可以强化书灵","擅长建立永久控制区"]
+    traits:["结晶地块无法被任何效果影响","精研可以强化书灵","擅长建立永久控制区"]
   }
 };
 for(const module of window.GameContentModules?.characters||[]){
@@ -180,60 +180,7 @@ function rectCells(center,size){
 }
 
 /* 地图机制注册表：规则执行与 AI 预测共用同一组拦截器。 */
-const MapRules=(()=>{
-  const mechanics=[];
-  function register(mechanic){mechanics.push(mechanic)}
-  function ownerChange(cell,toOwner,context={}){
-    if(!cell)return {allowed:false,reason:"missing"};
-    if(cell.owner===toOwner)return {allowed:false,reason:"unchanged"};
-    for(const mechanic of mechanics){
-      const reason=mechanic.blockOwnerChange?.(cell,toOwner,context);
-      if(reason)return {allowed:false,reason:mechanic.id||reason};
-    }
-    return {allowed:true,reason:null};
-  }
-  function inspectOwnerChanges(cells,toOwner,context={}){
-    const result={changeable:[],blocked:[],unchanged:[],territory:0};
-    [...new Set(cells.filter(Boolean))].forEach(cell=>{
-      const verdict=ownerChange(cell,toOwner,context);
-      if(verdict.allowed){
-        result.changeable.push(cell);
-        result.territory+=toOwner===OWNER.N?1:cell.owner===OWNER.N?1:2;
-      }else if(verdict.reason==="unchanged")result.unchanged.push(cell);
-      else result.blocked.push(cell);
-    });
-    return result;
-  }
-  function tryChangeOwner(cell,toOwner,context={}){
-    if(!ownerChange(cell,toOwner,context).allowed)return false;
-    cell.owner=toOwner;
-    return true;
-  }
-  function inspectCrystallize(cells,context={}){
-    const result={changeable:[],blocked:[],unchanged:[]};
-    [...new Set(cells.filter(Boolean))].forEach(cell=>{
-      if(cell.crystal){result.unchanged.push(cell);return}
-      const blocked=mechanics.some(x=>x.blockCellEffect?.(cell,{...context,effect:"crystallize"}));
-      (blocked?result.blocked:result.changeable).push(cell);
-    });
-    return result;
-  }
-  return {register,ownerChange,inspectOwnerChanges,tryChangeOwner,inspectCrystallize};
-})();
-
-MapRules.register({
-  id:"crystal",
-  blockOwnerChange(cell){return cell.crystal?"crystal":null}
-});
-MapRules.register({
-  id:"spell-block",
-  blockOwnerChange(cell,toOwner,context){
-    return cell.spellBlocked&&(context.source==="card"||context.source==="skill")?"spell-block":null;
-  },
-  blockCellEffect(cell,context){
-    return cell.spellBlocked&&(context.source==="card"||context.source==="skill");
-  }
-});
+const MapRules=GameMapRulesSystem.createDefault();
 
 function showScreen(id){
   if(id==="roles")renderRoleSelection();

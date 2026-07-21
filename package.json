@@ -1,0 +1,9 @@
+{
+  "name": "inkbound-tower-prototype",
+  "private": true,
+  "scripts": {
+    "dev": "node tools/dev-server.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "smoke": "node tools/browser-smoke.mjs"
+  }
+}

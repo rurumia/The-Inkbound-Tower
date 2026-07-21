@@ -212,8 +212,9 @@
     play({owner, target, api}) {
       const start = Math.max(0, Math.min(51, target.c - 4));
       const area = api.cells().filter(cell => cell.c >= start && cell.c < start + 10);
-      const affectedCells = area.filter(cell => api.neutralize(cell));
-      const affected = new Set(affectedCells.flatMap(cell => [cell.ground, cell.air]).filter(Boolean));
+      const unitCells = area.filter(cell => !cell.spellBlocked);
+      area.forEach(cell => api.neutralize(cell));
+      const affected = new Set(unitCells.flatMap(cell => [cell.ground, cell.air]).filter(Boolean));
       affected.forEach(unit => api.pushToHalfEdge(unit));
     }
   });
