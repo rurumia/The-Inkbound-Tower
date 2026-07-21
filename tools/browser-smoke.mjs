@@ -2,7 +2,8 @@ import {spawn} from "node:child_process";
 import {existsSync} from "node:fs";
 import {mkdtemp, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join, resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 
 const browserPath = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -12,6 +13,7 @@ if (!browserPath) throw new Error("Chrome or Edge is required for the browser sm
 
 const debugPort = 9237;
 const profileDir = await mkdtemp(join(tmpdir(), "inkbound-smoke-"));
+const gameUrl = pathToFileURL(resolve("index.html")).href;
 const browser = spawn(browserPath, [
   "--headless=new",
   "--disable-gpu",
@@ -22,7 +24,7 @@ const browser = spawn(browserPath, [
   `--remote-debugging-port=${debugPort}`,
   `--user-data-dir=${profileDir}`,
   "--window-size=1440,1000",
-  "http://127.0.0.1:4173/"
+  gameUrl
 ], {stdio: "ignore"});
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -142,7 +144,9 @@ try {
       enemyDeckTotal:B.enemy.draw.length+B.enemy.hand.length+B.enemy.discard.length,
       handCards:document.querySelectorAll("#hand .hand-card").length,
       cardArt,
-      cardArtLoaded:cardArtUrl?await fetch(cardArtUrl).then(response=>response.ok).catch(()=>false):false,
+      cardArtLoaded:cardArtUrl?await new Promise(resolve=>{
+        const image=new Image();image.onload=()=>resolve(true);image.onerror=()=>resolve(false);image.src=cardArtUrl;
+      }):false,
       canvasPixels:document.getElementById("battleCanvas").width*document.getElementById("battleCanvas").height
     };
   })()`);
