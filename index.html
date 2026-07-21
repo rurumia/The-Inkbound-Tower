@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>墨缚之塔</title>
+<link rel="stylesheet" href="src/styles/main.css">
+<link rel="stylesheet" href="src/styles/archive-hand.css">
+</head>
+<body>
+
+<section id="menu" class="screen active center-screen">
+  <div class="title">墨缚之塔</div>
+  <div class="subtitle">纸墨、书灵与区域控制</div>
+  <div class="menu-actions">
+    <button onclick="showScreen('roles')">进入法师之塔</button>
+    <button onclick="openHelp()">规则说明</button>
+  </div>
+  <section class="changelog" aria-label="更新日志">
+    <div class="changelog-header"><h2>更新日志</h2></div>
+    <article class="changelog-entry">
+      <time datetime="2026-07-21">2026-07-21 · 20735 与对手选择</time>
+      <ul>
+        <li>新增角色 20735、归档技能、完整 17 张卡牌、专属立绘头像与卡图合集。</li>
+        <li>新增独立归档区、奇点顺序结算、废料精炼、无人机协同、净化层与双格防御工事。</li>
+        <li>战斗房间新增对手选择，可自由进行三名角色之间的对战及镜像战。</li>
+        <li>角色、卡牌效果、归档和对手选择改为独立注册模块，并修正窄屏战斗布局。</li>
+      </ul>
+    </article>
+    <article class="changelog-entry">
+      <time datetime="2026-07-20">2026-07-20 · 战斗规则与意图更新</time>
+      <ul>
+        <li>补齐两名角色共 34 张卡牌的战斗效果，修复飞行、降落、结晶、精研、代伤、禁行和资源结算等异常。</li>
+        <li>修复“精准俯冲”和“逻辑重构”的两阶段目标选择，非法目标不再提前消耗卡牌与墨水。</li>
+        <li>调整避战型书灵 AI：仅当 10 格内存在敌人时优先拉开距离，否则继续执行墨井接近和涂色扩张。</li>
+        <li>重构敌人意图：锁定具体手牌实例与目标，避免牌堆预告、重复预留和未来意图牌被错误牺牲。</li>
+        <li>修复护卫大天鹅等召唤意图无故失效的问题；下一意图为召唤牌时，战场以灰色图标标出锁定位置。</li>
+        <li>战斗侧栏新增狂热开始回合与结算回合上限设置，默认分别为 50 和 90。</li>
+        <li>统一六边形 axial 坐标、画面偏移与六方向定义，修复奇偶行斜向移动时侧向铺色错位及地图边缘方向跳转。</li>
+        <li>重构书灵行动 AI：先规划完整路径并模拟铺色、墨井、危险和攻击结果，再以字典序选择行动；支持稳定攻击目标和朝向。</li>
+        <li>调整书灵行动：拥有移动力且存在合法路径时每次行动必须移动，并加入接敌与前线推进评分；战斗日志不再显示内部行动计划。</li>
+        <li>修正菲涅“精读”：将半径 1 的完整 7 格永久设为精研区域，并为区域内己方书灵提供 1 层护盾。</li>
+        <li>新增模块化地图规则与行动影响评估：敌方意图、狂热和书灵移动会预测结晶格无法被涂色或重置，不再浪费改色效果。</li>
+        <li>自动出牌改为比较所有合法卡牌与目标的实际收益；召唤、禁行和噤声等非改色效果不会被结晶格错误判为无效。</li>
+        <li>角色、技能和对手关系改为注册式配置；角色选择页接入立绘，战斗顶部显示玩家与敌方头像，并支持图片缺失占位。</li>
+        <li>为全部 34 张卡牌接入卡图合集，并统一重排构筑、战斗手牌、详情与奖励卡面，补充角色主题边框、属性栏和响应式布局。</li>
+        <li>补充单位状态显示、卡牌规则文本和关键效果的脚本验证。</li>
+      </ul>
+    </article>
+  </section>
+</section>
+
+<section id="roles" class="screen center-screen">
+  <div class="menu-box">
+    <h1>选择角色</h1>
+    <div id="roleGrid" class="role-grid"></div>
+  </div>
+</section>
+
+<section id="deck" class="screen" style="flex-direction:column">
+  <div class="topbar">
+    <b>卡组构筑</b>
+    <span id="deckRole"></span>
+    <span class="grow"></span>
+    <button onclick="showScreen('roles')">返回角色选择</button>
+    <button onclick="enterRoom()">完成构筑</button>
+  </div>
+  <div class="content deck-layout">
+    <div id="deckList" class="deck-list"></div>
+    <aside class="side-info">
+      <h2>狂热设置</h2>
+      <p>自动出牌按优先级 <b>0 → 9</b>。</p>
+      <p>无法出牌时，自动牺牲按 <b>9 → 0</b>。</p>
+      <p id="archivePriorityHelp" hidden>20735自动归档按构筑数字 <b>0 → 9</b> 选择，敌方AI与狂热AI使用同一顺序。</p>
+      <p>蓝色墨滴允许牺牲；黄色锁标志代表保护。</p>
+      <p>同优先级使用当前卡组顺序。</p>
+      <hr>
+      <h3>操作</h3>
+      <p>使用 ↑ ↓ 调整卡牌顺序。下拉框调整自动优先级。</p>
+    </aside>
+  </div>
+</section>
+
+<section id="room" class="screen room-map">
+  <h1>法师之塔 · 试炼房间</h1>
+  <div class="room-node">
+    <b>卷轴战场</b>
+    <span>普通战斗</span>
+  </div>
+  <section class="opponent-panel" aria-labelledby="opponentTitle">
+    <h2 id="opponentTitle">选择本次对手</h2>
+    <div id="opponentGrid" class="opponent-grid"></div>
+  </section>
+  <div>
+    <button onclick="startBattle()">进入战斗</button>
+    <button onclick="previewEnemy()">敌人卡组预览</button>
+    <button onclick="showScreen('menu')">返回主菜单</button>
+  </div>
+  <p id="runInfo" class="small" style="margin-top:20px"></p>
+</section>
+
+<section id="battle" class="screen">
+  <div id="battleHud">
+    <div id="playerHud" class="hudSide"></div>
+    <div class="hudMid">
+      <div style="text-align:center;margin-bottom:4px">
+        <b id="phaseText">玩家操作阶段</b>
+      </div>
+      <div id="intentRow" class="intent-row"></div>
+    </div>
+    <div id="enemyHud" class="hudSide enemy"></div>
+  </div>
+
+  <div id="battleMain">
+    <div id="fieldWrap">
+      <canvas id="battleCanvas"></canvas>
+      <div id="fieldHint">滚轮缩放 · 中键/左键空白处拖动画面 · Space 居中</div>
+      <div id="archiveDock" class="archive-dock" hidden></div>
+    </div>
+    <aside id="battleSide">
+      <div class="side-section">
+        <b>战场状态</b>
+        <div id="mapStats"></div>
+      </div>
+      <div class="side-section">
+        <b>战斗参数</b>
+        <div class="battle-settings">
+          <div class="setting-row">
+            <label for="frenzySetting">狂热开始</label>
+            <button type="button" title="提前 1 回合" aria-label="狂热开始回合减 1" onclick="adjustBattleSetting('frenzy',-1)">−</button>
+            <input id="frenzySetting" type="number" min="1" max="999" value="50" onchange="setBattleSetting('frenzy',this.value)">
+            <button type="button" title="推迟 1 回合" aria-label="狂热开始回合加 1" onclick="adjustBattleSetting('frenzy',1)">+</button>
+          </div>
+          <div class="setting-row">
+            <label for="settlementSetting">结算上限</label>
+            <button type="button" title="减少 1 回合" aria-label="结算回合上限减 1" onclick="adjustBattleSetting('settlement',-1)">−</button>
+            <input id="settlementSetting" type="number" min="2" max="999" value="90" onchange="setBattleSetting('settlement',this.value)">
+            <button type="button" title="增加 1 回合" aria-label="结算回合上限加 1" onclick="adjustBattleSetting('settlement',1)">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="side-section">
+        <b>当前选择</b>
+        <div id="selectionInfo" class="small">尚未选择卡牌或技能。</div>
+      </div>
+      <div id="log"></div>
+    </aside>
+  </div>
+
+  <div id="handArea">
+    <div id="skillPanel"></div>
+    <div id="hand"></div>
+    <div id="turnPanel"></div>
+  </div>
+</section>
+
+<div id="modal" onclick="if(event.target===this)closeModal()">
+  <div id="modalBox" class="modal-box"></div>
+</div>
+
+<script src="src/engine/effect-registry.js"></script>
+<script src="src/engine/archive-system.js"></script>
+<script src="src/engine/archive-target-snapshot.js"></script>
+<script src="src/engine/archive-cast-system.js"></script>
+<script src="src/engine/hand-system.js"></script>
+<script src="src/engine/modifier-system.js"></script>
+<script src="src/engine/status-system.js"></script>
+<script src="src/engine/drone-link-system.js"></script>
+<script src="src/engine/target-resolver.js"></script>
+<script src="src/engine/opponent-selection.js"></script>
+<script src="src/content/character-20735.js"></script>
+<script src="src/content/effects-20735.js"></script>
+<script src="src/ui/archive-view.js"></script>
+<script src="src/app/core.js"></script>
+<script src="src/content/card-catalog.js"></script>
+<script src="src/ui/deck-room-view.js"></script>
+<script src="src/engine/battle-setup.js"></script>
+<script src="src/engine/entity-system.js"></script>
+<script src="src/engine/turn-engine.js"></script>
+<script src="src/engine/player-actions.js"></script>
+<script src="src/content/base-effects.js"></script>
+<script src="src/engine/card-ai.js"></script>
+<script src="src/engine/opponent-ai.js"></script>
+<script src="src/engine/unit-engine.js"></script>
+<script src="src/engine/victory-system.js"></script>
+<script src="src/ui/canvas-view.js"></script>
+<script src="src/ui/battle-view.js"></script>
+</body>
+</html>
