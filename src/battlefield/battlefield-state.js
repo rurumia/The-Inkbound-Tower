@@ -15,6 +15,7 @@
     const collision = GameContinuousCollision.create({entities: () => entities.list()});
     const navigation = GameContinuousNavigation.create({collision});
     const wells = GameContinuousWells.create({paintField, entities, random});
+    const territoryAI = GameContinuousTerritoryAI.create({paintField, navigation, wells});
     const committedPlans = new Set();
     let actionSequence = 1;
 
@@ -115,7 +116,7 @@
       });
     }
 
-    return Object.freeze({regions, paintField, entities, collision, navigation, wells, setup, planMove, commitMove, executeMove, resolveMapEnd, snapshot});
+    return Object.freeze({regions, paintField, entities, collision, navigation, wells, territoryAI, setup, planMove, commitMove, executeMove, resolveMapEnd, snapshot});
   }
 
   global.GameContinuousBattlefield = Object.freeze({initialTemplates: INITIAL_TEMPLATES, create});

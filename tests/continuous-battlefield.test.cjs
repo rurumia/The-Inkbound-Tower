@@ -20,8 +20,10 @@ load("src/battlefield/brush-system.js");
 load("src/battlefield/entity-store.js");
 load("src/battlefield/well-system.js");
 load("src/battlefield/infiltration-system.js");
+load("src/battlefield/territory-ai.js");
 load("src/battlefield/battlefield-state.js");
 load("src/presentation/action-sequencer.js");
+load("src/presentation/camera-2d.js");
 load("src/content/spirit-visual-profiles.js");
 
 test("continuous world is 60U by 30U and quantizes commands to 1/256U", () => {
@@ -184,5 +186,28 @@ test("all 33 spirit templates have independent Spine asset contracts", () => {
     assert.ok(GameSpiritVisualProfiles.baseAnimations.every(animation => profile.requiredAnimations.includes(animation)), profile.id);
     assert.ok(profile.requiredSlots.includes("brush_anchor"), profile.id);
     assert.ok(profile.requiredSlots.includes("hit_anchor"), profile.id);
+    assert.ok(profile.requiredBones.includes("root"), profile.id);
   }
+});
+
+test("continuous territory AI seeks a distant frontier when its local area is fully friendly", () => {
+  const field = GamePaintField.create({width: 240, height: 120});
+  field.apply({shape: GameContinuousGeometry.rect({x: 30, y: 15}, 60, 30), owner: 1, kind: "paint", strength: 1});
+  field.apply({shape: GameContinuousGeometry.circle({x: 50, y: 15}, 1), owner: 0, kind: "effect", mode: "neutralize"});
+  const unit = {id: "seeker", owner: 1, position: {x: 4, y: 15}, body: {radius: 0.35}, heightLayer: "ground", currentStats: {move: 3}, ai: "expand"};
+  const collision = GameContinuousCollision.create({entities: [unit]});
+  const navigation = GameContinuousNavigation.create({collision});
+  const ai = GameContinuousTerritoryAI.create({paintField: field, navigation});
+  assert.equal(ai.localFullyFriendly(unit), true);
+  assert.ok(ai.chooseDestination(unit).x > 45);
+});
+
+test("continuous camera round-trips points through fit, pan, and zoom", () => {
+  const camera = GameContinuousCamera.create({width: 1200, height: 600, padding: 0});
+  camera.fit();
+  camera.pan(15, -8);
+  camera.zoomAt({x: 400, y: 220}, 1.4);
+  const source = {x: 18.25, y: 9.75};
+  const restored = camera.screenToWorld(camera.worldToScreen(source));
+  assert.ok(GameWorldSpace.distance(source, restored) <= 1 / 256);
 });

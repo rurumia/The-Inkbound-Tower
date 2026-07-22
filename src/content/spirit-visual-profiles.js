@@ -52,7 +52,8 @@
     atlasFile: "skeleton.atlas",
     textureFile: "texture.png",
     previewFile: "preview.png",
-    requiredSlots: Object.freeze(["root", "shadow_anchor", "brush_anchor", "hit_anchor", "status_anchor", "selection_anchor"]),
+    requiredBones: Object.freeze(["root"]),
+    requiredSlots: Object.freeze(["shadow_anchor", "brush_anchor", "hit_anchor", "status_anchor", "selection_anchor"]),
     requiredAnimations: Object.freeze([...new Set([...BASE_ANIMATIONS, ...extra])]),
     scale: 1,
     groundOffsetU: 0

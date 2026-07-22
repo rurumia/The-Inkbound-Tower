@@ -4,6 +4,9 @@
   "scripts": {
     "dev": "node tools/dev-server.mjs",
     "test": "node --test tests/*.test.cjs",
-    "smoke": "node tools/browser-smoke.mjs"
+    "smoke": "node tools/browser-smoke.mjs",
+    "spine:status": "node tools/spine-assets.mjs status",
+    "spine:validate": "node tools/spine-assets.mjs validate",
+    "spine:pack": "node tools/spine-assets.mjs pack"
   }
 }
