@@ -2,6 +2,20 @@
 
 const INK_WELL_INCOME=2;
 
+function advanceFlightStatus(unit,land=landUnit){
+  if(unit.flying<=0)return false;
+  unit.flying--;
+  if(unit.flying<=0&&!land(unit)){
+    // A full ground layer can temporarily leave no legal landing cell.
+    // Keep the timer alive so the unit retries on the next owned turn.
+    unit.flying=1;
+    return false;
+  }
+  return true;
+}
+
+window.GameFlightStatus=Object.freeze({advance:advanceFlightStatus});
+
 /* =========================================================
    回合流程
 ========================================================= */
@@ -76,10 +90,7 @@ function processStatuses(owner){
   B.units.filter(u=>!u.dead&&u.owner===owner).forEach(u=>{
     u.rooted=false;u.bonusMove=0;u.bonusAttack=0;
     u.effectMove=0;u.effectAttack=0;u.effectPaint=0;
-    if(u.flying>0){
-      u.flying--;
-      if(u.flying<=0)landUnit(u);
-    }
+    if(u.flying>0)GameFlightStatus.advance(u);
     if(u.duration>0){
       u.duration--;
       if(u.duration<=0)removeUnit(u,false);

@@ -23,6 +23,7 @@ load("src/engine/opponent-selection.js");
 load("src/engine/map-rules.js");
 load("src/content/character-20735.js");
 load("src/content/effects-20735.js");
+load("src/engine/turn-engine.js");
 
 global.window=global;
 load("src/engine/opponent-ai.js");
@@ -32,6 +33,17 @@ test("enemy archive cadence leaves alternating turns for normal intents", () => 
   assert.equal(GameOpponentIntentRules.shouldEnemyArchive(3),false);
   assert.equal(GameOpponentIntentRules.shouldEnemyArchive(5),true);
   assert.equal(GameOpponentIntentRules.shouldEnemyArchive(7),false);
+});
+
+test("expired flight retries landing when the ground layer is temporarily full", () => {
+  const unit = {flying: 1};
+  let attempts = 0;
+  assert.equal(GameFlightStatus.advance(unit, () => { attempts++; return false; }), false);
+  assert.equal(attempts, 1);
+  assert.equal(unit.flying, 1);
+  assert.equal(GameFlightStatus.advance(unit, () => { attempts++; return true; }), true);
+  assert.equal(attempts, 2);
+  assert.equal(unit.flying, 0);
 });
 
 test("crystal tiles reject ownership changes and every later cell effect", () => {
