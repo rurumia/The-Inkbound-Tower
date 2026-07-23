@@ -6,8 +6,8 @@
     name: "20735",
     fallback: "20",
     images: {
-      selection: "images/20735立绘.jpg",
-      avatar: "images/20735头像.jpg"
+      selection: "images/20735立绘.webp",
+      avatar: "images/20735头像.webp"
     },
     accent: "#78d9a6",
     opponents: ["sina", "fine"],

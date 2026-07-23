@@ -204,7 +204,7 @@ assets/spine/<spiritTemplateId>/
   skeleton.json 或 skeleton.skel
   skeleton.atlas
   texture.png
-  preview.png
+  preview.webp
 
 本版本需要覆盖：
 

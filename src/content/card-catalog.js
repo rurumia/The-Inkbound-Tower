@@ -61,13 +61,13 @@ function stripArt(sheet,index,total=17){
   return {sheet,index,total};
 }
 CARDS.sina.forEach((d,i)=>{
-  d.art=stripArt("images/sina_card_art_set.png",i);
+  d.art=stripArt("images/sina_card_art_set.webp",i);
 });
 CARDS.fine.forEach((d,i)=>{
-  d.art=stripArt("images/fine_card_art_set.png",i);
+  d.art=stripArt("images/fine_card_art_set.webp",i);
 });
 CARDS["20735"].forEach((d,i)=>{
-  d.art=stripArt("images/20735_card_art_set.png",i);
+  d.art=stripArt("images/20735_card_art_set.webp",i);
 });
 
 function cardFooter(d){

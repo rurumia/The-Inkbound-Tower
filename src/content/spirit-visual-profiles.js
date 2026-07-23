@@ -67,7 +67,7 @@
     skeletonFile: "skeleton.json",
     atlasFile: "skeleton.atlas",
     textureFile: "texture.png",
-    previewFile: "preview.png",
+    previewFile: "preview.webp",
     requiredBones: Object.freeze(["root"]),
     requiredSlots: Object.freeze(["shadow_anchor", "brush_anchor", "hit_anchor", "status_anchor", "selection_anchor"]),
     requiredAnimations: Object.freeze([...new Set([...BASE_ANIMATIONS, ...extra])]),

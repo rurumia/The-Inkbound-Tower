@@ -17,7 +17,7 @@
   const RENDER_WIDTH = 960;
   const RENDER_HEIGHT = 480;
   const CRYSTAL_OVERFLOW_U = 0.12;
-  const BACKGROUND_URL = "images/battle_scroll_field.png";
+  const BACKGROUND_URL = "images/battle_scroll_field.webp";
   const BACKGROUND_WIDTH_SCALE = 1.36;
   const BACKGROUND_HEIGHT_SCALE = 1.16;
   const BACKGROUND_VISUAL_SCALE = 1.15;
@@ -25,6 +25,8 @@
   const INK_EDGE_FEATHER_U = 1.25;
   const INK_TEXTURE_WIDTH = 1024;
   const INK_TEXTURE_HEIGHT = 512;
+  const BACKGROUND_STRIP_COUNT = 96;
+  const MATERIAL_STRIP_HEIGHT_PX = 2;
   const crystalGroupCache = new WeakMap();
 
   function clamp01(value) {
@@ -442,13 +444,9 @@
       const data = image.data;
       const edgeBandX = (INK_EDGE_FEATHER_U + .45) / global.GameWorldSpace.width * width;
       const edgeBandY = (INK_EDGE_FEATHER_U + .45) / global.GameWorldSpace.height * height;
-      const sample = (x, y) => paintField.sampleRaster(
-        Math.max(0, Math.min(width - 1, x)), Math.max(0, Math.min(height - 1, y)), width, height
-      );
-
       for (let y = area.minY; y <= area.maxY; y++) {
         for (let x = area.minX; x <= area.maxX; x++) {
-          const control = sample(x, y);
+          const control = paintField.sampleRaster(x, y, width, height);
           const coverage = clamp01(Math.abs(control));
           const nearEdge = x < edgeBandX || x >= width - edgeBandX || y < edgeBandY || y >= height - edgeBandY;
           const edgeAlpha = coverage && nearEdge ? inkEdgeAlpha(
@@ -538,12 +536,11 @@
         const worldHeight = worldWidth * backgroundImage.naturalHeight / backgroundImage.naturalWidth;
         const worldLeft = (global.GameWorldSpace.width - worldWidth) / 2;
         const worldTop = (global.GameWorldSpace.height - worldHeight) / 2 + BACKGROUND_OFFSET_Y_U;
-        const backgroundStrips = 260;
-        for (let strip = 0; strip < backgroundStrips; strip++) {
-          const sourceY = strip / backgroundStrips * backgroundImage.naturalHeight;
-          const sourceBottom = (strip + 1) / backgroundStrips * backgroundImage.naturalHeight;
-          const topY = worldTop + strip / backgroundStrips * worldHeight;
-          const bottomY = worldTop + (strip + 1) / backgroundStrips * worldHeight;
+        for (let strip = 0; strip < BACKGROUND_STRIP_COUNT; strip++) {
+          const sourceY = strip / BACKGROUND_STRIP_COUNT * backgroundImage.naturalHeight;
+          const sourceBottom = (strip + 1) / BACKGROUND_STRIP_COUNT * backgroundImage.naturalHeight;
+          const topY = worldTop + strip / BACKGROUND_STRIP_COUNT * worldHeight;
+          const bottomY = worldTop + (strip + 1) / BACKGROUND_STRIP_COUNT * worldHeight;
           const middleY = (topY + bottomY) / 2;
           const left = camera.worldToScreen({x: worldLeft, y: middleY});
           const right = camera.worldToScreen({x: worldLeft + worldWidth, y: middleY});
@@ -558,9 +555,9 @@
       const firstScreenRow = Math.floor(materialTop);
       const lastScreenRow = Math.ceil(materialBottom);
       const centerScreenX = camera.worldToScreen({x:global.GameWorldSpace.width / 2,y:0}).x;
-      for (let screenRow = firstScreenRow; screenRow < lastScreenRow; screenRow++) {
+      for (let screenRow = firstScreenRow; screenRow < lastScreenRow; screenRow += MATERIAL_STRIP_HEIGHT_PX) {
         const screenTop = Math.max(materialTop, screenRow);
-        const screenBottom = Math.min(materialBottom, screenRow + 1);
+        const screenBottom = Math.min(materialBottom, screenRow + MATERIAL_STRIP_HEIGHT_PX);
         if (screenBottom <= screenTop) continue;
         const sourceY = camera.screenToWorld({x:centerScreenX,y:screenTop}).y /
           global.GameWorldSpace.height * height;
@@ -590,6 +587,8 @@
         backgroundHeightScale: BACKGROUND_HEIGHT_SCALE,
         backgroundVisualScale: BACKGROUND_VISUAL_SCALE,
         backgroundOffsetYU: BACKGROUND_OFFSET_Y_U,
+        backgroundStripCount: BACKGROUND_STRIP_COUNT,
+        materialStripHeightPx: MATERIAL_STRIP_HEIGHT_PX,
         inkEdgeMode: "brush-soft",
         inkEdgeFeatherU: INK_EDGE_FEATHER_U,
         inkTextureLookup: true,
@@ -611,6 +610,8 @@
     backgroundHeightScale: BACKGROUND_HEIGHT_SCALE,
     backgroundVisualScale: BACKGROUND_VISUAL_SCALE,
     backgroundOffsetYU: BACKGROUND_OFFSET_Y_U,
+    backgroundStripCount: BACKGROUND_STRIP_COUNT,
+    materialStripHeightPx: MATERIAL_STRIP_HEIGHT_PX,
     crystalOverflowU: CRYSTAL_OVERFLOW_U,
     hash2D,
     inkTextureSample,

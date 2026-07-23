@@ -6,6 +6,7 @@ const path = require("node:path");
 const {pathToFileURL} = require("node:url");
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+const WEBP = Buffer.from("RIFF\x00\x00\x00\x00WEBPVP8 ", "binary");
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "inkbound-spine-"));
@@ -14,7 +15,7 @@ async function fixture() {
   await mkdir(directory, {recursive: true});
   const profile = {
     id: "test.spirit", assetRoot,
-    skeletonFile: "skeleton.json", atlasFile: "skeleton.atlas", textureFile: "texture.png", previewFile: "preview.png",
+    skeletonFile: "skeleton.json", atlasFile: "skeleton.atlas", textureFile: "texture.png", previewFile: "preview.webp",
     requiredBones: ["root"], requiredSlots: ["brush_anchor", "hit_anchor"],
     requiredAnimations: ["spawn", "idle", "move", "attack", "hurt", "death"]
   };
@@ -27,7 +28,7 @@ async function fixture() {
   await writeFile(path.join(directory, "skeleton.json"), JSON.stringify(skeleton));
   await writeFile(path.join(directory, "skeleton.atlas"), "texture.png\nsize: 1,1\n");
   await writeFile(path.join(directory, "texture.png"), PNG);
-  await writeFile(path.join(directory, "preview.png"), PNG);
+  await writeFile(path.join(directory, "preview.webp"), WEBP);
   return {root, profile, directory};
 }
 
@@ -61,6 +62,7 @@ test("Spine packer emits a classic file-compatible asset bundle", async () => {
     const source = await readFile(output, "utf8");
     assert.match(source, /^window\.GameSpineAssets=Object\.freeze/);
     assert.match(source, /data:image\/png;base64/);
+    assert.doesNotMatch(source, /previewDataUrl/);
   } finally {
     await rm(data.root, {recursive: true, force: true});
   }

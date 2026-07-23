@@ -297,7 +297,7 @@ try {
   }
   if(battle.layers.length!==3||new Set(battle.layers.map(layer=>layer.size.join("x"))).size!==1||
     battle.controlField.join("x")!=="1920x960"||battle.terrainResolution[0]<960||battle.terrainResolution[1]<480||
-    !battle.terrainDiagnostics.backgroundReady||battle.terrainDiagnostics.backgroundUrl!=="images/battle_scroll_field.png"||
+    !battle.terrainDiagnostics.backgroundReady||battle.terrainDiagnostics.backgroundUrl!=="images/battle_scroll_field.webp"||
     battle.terrainDiagnostics.backgroundWidthScale!==1.36||
     battle.terrainDiagnostics.backgroundHeightScale!==1.16||
     battle.terrainDiagnostics.backgroundVisualScale!==1.15||
@@ -311,7 +311,7 @@ try {
     battle.spineVisualOffsetYU!==1||
     battle.initialJudgmentRadii.some(radius=>radius!==.35)||
     battle.overlayRules.wellFrames.join(",")!=="0,1,2,3"||
-    !battle.overlayRules.wellSprite.includes("ink_well_states_transparent.png")||
+    !battle.overlayRules.wellSprite.includes("ink_well_states_transparent.webp")||
     battle.overlayRules.wellVisualSizeU!==2.2||
     !battle.overlayRules.wellBillboard||battle.overlayRules.wellStateTransition!==false||!battle.overlayRules.spineBillboards||
     !battle.overlayRules.previewTouches||!battle.overlayRules.summonPreview||Math.abs(battle.overlayRules.circleScaleRatio-.7)>1e-12||
@@ -401,7 +401,13 @@ try {
   if(!unitHover.hidesForSelection)throw new Error(`Unit hover card stayed visible during card selection: ${JSON.stringify(unitHover)}`);
 
   const wellHover = await client.evaluate(`(()=>{
-    const well=B.wells[0],canvas=document.getElementById("overlayCanvas");
+    const livingUnits=B.units.filter(unit=>!unit.dead);
+    const well=[...B.wells].sort((left,right)=>{
+      const distance=current=>Math.min(...livingUnits.map(unit=>GameWorldSpace.distance(
+        GameBattlefieldAdapter.cellToWorld(current.cell),GameBattlefieldAdapter.unitPosition(unit)
+      )));
+      return distance(right)-distance(left);
+    })[0],canvas=document.getElementById("overlayCanvas");
     const canvasRect=canvas.getBoundingClientRect();
     const screen=GameProductionBattlefield.camera.worldToScreen(GameBattlefieldAdapter.cellToWorld(well.cell));
     const pointer={x:canvasRect.left+screen.x,y:canvasRect.top+screen.y};
@@ -422,7 +428,7 @@ try {
   })()`);
   if(!wellHover.visible||wellHover.wellId!==wellHover.expectedWellId||wellHover.title!=="墨井"||
     !wellHover.rules.includes("66%")||!wellHover.rules.includes("1 墨水")||wellHover.income!=="1"||
-    !wellHover.art.includes("ink_well_card_art.png")){
+    !wellHover.art.includes("ink_well_card_art.webp")){
     throw new Error(`Ink well hover card failed: ${JSON.stringify(wellHover)}`);
   }
   await screenshot(client, ".tmp-ink-well-hover-card.png");
@@ -1237,6 +1243,155 @@ try {
   if(fineCardAudit.total!==17||fineCardAudit.passed!==17){
     throw new Error(`Fine card audit failed: ${JSON.stringify(fineCardAudit)}`);
   }
+  const sinaCardAudit = await client.evaluate(`(()=>{
+    const checks={};
+    const reset=()=>{
+      B.cells.forEach(cell=>{
+        cell.owner=0;cell.crystal=false;cell.studied=false;cell.permanentCrystal=false;
+        cell.permanentStudied=false;cell.spellBlocked=false;cell.ground=null;cell.air=null;cell.well=null;
+      });
+      B.wells=[];B.units=[];B.birth=0;B.global=0;B.current=1;B.busy=false;
+      B.player.role="sina";B.player.ink=0;B.player.cap=100;B.player.skillCd=0;
+      B.player.sacrifices=0;B.player.landedThisTurn=false;B.player.hand=[];B.player.deck=[];B.player.discard=[];
+      B.enemy.ink=0;B.enemy.cap=100;B.enemy.landedThisTurn=false;
+      const regions=GameContinuousRegions.create();
+      B.spatial={regions,paint:GamePaintField.create({regions})};
+    };
+    const cell=(x,y)=>GameBattlefieldAdapter.worldToCell({x,y},B.cells);
+    const point=unit=>GameBattlefieldAdapter.unitPosition(unit);
+    const paint=(center,radius,owner=1)=>B.spatial.paint.apply({
+      shape:GameContinuousGeometry.circle(center,radius),owner,kind:"paint",strength:1
+    });
+    const playSummon=(name,x,y)=>{
+      executeCard(CARD_MAP.get(name),1,cell(x,y));
+      return B.units.at(-1);
+    };
+    const fixture=(name,targetCell,owner=1,stats={attack:0,hp:4,move:2,paint:1,ai:"avoid"})=>
+      summonUnit(owner,name,targetCell,stats,{initial:true,resource:false});
+
+    reset();
+    const messenger=playSummon("小天鹅信使",8.5,8.5);
+    makeFlying(messenger,2);processTurnStartResources(1);
+    checks.swanMessenger=messenger.duration===3&&messenger.height===2&&B.player.ink===6;
+
+    reset();
+    const rally=playSummon("湖光集结",8.5,8.5);
+    const rallyBird=fixture("测试飞鸟",cell(11.5,8.5));makeFlying(rallyBird,2);processEndResources(1);
+    checks.lakeRally=rally.duration===3&&B.player.ink===6;
+
+    reset();
+    const pump=playSummon("羽翼泵动站",8.5,8.5);
+    const pumpBird=fixture("测试飞鸟",cell(11.5,8.5));makeFlying(pumpBird,2);
+    const takeoffInk=B.player.ink;processTurnStartResources(1);
+    checks.wingPump=pump.duration===4&&takeoffInk===2&&B.player.ink===6;
+
+    reset();
+    const rest=playSummon("天鹅湖休息区",8.5,8.5);
+    B.player.landedThisTurn=true;processEndResources(1);
+    const armed=rest.restBonus===true&&B.player.ink===6;
+    B.player.landedThisTurn=false;processEndResources(1);
+    checks.restArea=armed&&rest.duration===3&&rest.restBonus===false&&B.player.ink===16;
+
+    reset();
+    const chargeOrigin=cell(8.5,10.5);
+    const sparrow=playSummon("冲锋白雀",8.5,10.5);
+    checks.chargingSparrow=hexDistance(chargeOrigin,sparrow.cell)>=3;
+
+    reset();
+    const swan=playSummon("护卫大天鹅",8.5,12.5);makeFlying(swan,2);
+    const swanDestination=cell(14.5,12.5);
+    const pushed=fixture("推动目标",neighborInDirection(swanDestination,0),2,{attack:0,hp:5,move:1,paint:0,ai:"avoid"});
+    const pushedStart=point(pushed),swanCenter=GameBattlefieldAdapter.cellToWorld(swanDestination);
+    paint(swanCenter,3.2,1);landUnit(swan,swanDestination);
+    checks.guardianSwan=swan.height===1&&GameWorldSpace.distance(pushedStart,point(pushed))>1&&
+      Math.abs(B.spatial.paint.sample(swanCenter))<.1;
+
+    reset();
+    const scoutCenter=GameBattlefieldAdapter.cellToWorld(cell(9.5,9.5));paint(scoutCenter,.8,1);
+    const scout=playSummon("侦查隼·B型",9.5,9.5);
+    checks.scoutFalcon=scout.height===2&&movementFor(scout)===7;
+
+    reset();
+    const goose=playSummon("重力白鹅",8.5,9.5);makeFlying(goose,2);
+    const crushCell=cell(13.5,9.5);
+    const crushTarget=fixture("脆弱目标",crushCell,2,{attack:0,hp:2,move:1,paint:0,ai:"avoid"});
+    landUnit(goose,crushCell);
+    checks.gravityGoose=crushTarget.dead===true&&goose.height===1&&goose.cell===crushCell;
+
+    reset();
+    const peacock=playSummon("幻影孔雀",8.5,11.5);makeFlying(peacock,2);
+    const beforePeacock=B.spatial.paint.measure().player;landUnit(peacock,cell(13.5,11.5));
+    checks.phantomPeacock=B.spatial.paint.measure().player>beforePeacock&&B.spatial.paint.sample(point(peacock))>0;
+
+    reset();
+    const woodpecker=playSummon("铁喙啄木鸟",9.5,13.5);
+    const woodTarget=fixture("禁行目标",neighborInDirection(woodpecker.cell,0),2,{attack:0,hp:5,move:0,paint:0,ai:"avoid"});
+    woodTarget.rooted=true;combat(woodpecker,woodTarget);
+    checks.ironWoodpecker=woodTarget.dead===true&&woodpecker.height===2;
+
+    reset();
+    const emergencySwan=playSummon("护卫大天鹅",10.5,14.5);makeFlying(emergencySwan,2);
+    const emergencyCenter=point(emergencySwan),expandedPoint={x:emergencyCenter.x+2.7,y:emergencyCenter.y};
+    paint(emergencyCenter,3.2,1);
+    const paintedBefore=B.spatial.paint.sample(expandedPoint)>0;
+    executeCard(CARD_MAP.get("紧急着陆指令"),1,null);
+    checks.emergencyLanding=paintedBefore&&emergencySwan.height===1&&Math.abs(B.spatial.paint.sample(expandedPoint))<.1;
+
+    reset();
+    const dancer=playSummon("重力白鹅",9.5,9.5);
+    executeCard(CARD_MAP.get("轻盈之舞"),1,dancer);
+    const dancedIntoAir=dancer.height===2;
+    executeCard(CARD_MAP.get("轻盈之舞"),1,dancer);
+    checks.lightDance=dancedIntoAir&&dancer.extraActions===1;
+
+    reset();
+    const charger=fixture("突击测试",cell(8.5,15.5),1,{attack:1,hp:4,move:3,paint:1,ai:"aggressive"});
+    charger.lastMoveDirection=0;
+    const chargeStep=neighborInDirection(charger.cell,0);
+    const collisionCell=neighborInDirection(chargeStep,0);
+    const collisionTarget=fixture("碰撞目标",collisionCell,2,{attack:0,hp:3,move:1,paint:0,ai:"avoid"});
+    executeCard(CARD_MAP.get("莽撞突击"),1,null);
+    checks.recklessCharge=charger.cell===chargeStep&&collisionTarget.hp===2;
+
+    reset();
+    const ascentA=fixture("升空甲",cell(8.5,8.5));
+    const ascentB=fixture("升空乙",cell(11.5,11.5));
+    executeCard(CARD_MAP.get("全体升空！"),1,null);
+    checks.massTakeoff=[ascentA,ascentB].every(unit=>unit.height===2&&unit.flying===2&&unit.bonusMove===2);
+
+    reset();
+    const diver=playSummon("重力白鹅",8.5,10.5);makeFlying(diver,2);
+    const diveCell=cell(14.5,10.5);
+    executeCard(CARD_MAP.get("精准俯冲"),1,{unit:diver,cell:diveCell});
+    checks.precisionDive=diver.height===1&&diver.cell===diveCell&&diver.bonusAttack===1;
+
+    reset();
+    const protectedUnit=playSummon("护卫大天鹅",9.5,9.5);
+    protectedUnit.hp=4;protectedUnit.lastLanded=true;
+    executeCard(CARD_MAP.get("白羽防护罩"),1,protectedUnit);
+    const protectedHp=protectedUnit.hp;damage(protectedUnit,3);
+    checks.featherShield=protectedUnit.halfDamage===true&&protectedHp===6&&protectedUnit.hp===4;
+
+    reset();
+    const stormPlayer=fixture("风暴甲",cell(9.5,8.5),1);makeFlying(stormPlayer,2);
+    const stormEnemy=fixture("风暴乙",cell(42.5,20.5),2);makeFlying(stormEnemy,2);
+    executeCard(CARD_MAP.get("乱序风暴"),1,null);
+    const stormTerritory=B.spatial.paint.measure();
+    checks.disorderStorm=stormPlayer.height===1&&stormEnemy.height===1&&
+      stormTerritory.player>10&&stormTerritory.enemy>10;
+
+    reset();
+    const skillTarget=playSummon("重力白鹅",9.5,9.5);
+    let submitCalls=0;const originalSubmit=submitAction;submitAction=()=>{submitCalls++};
+    const skillUsed=executeSkill(skillTarget);submitAction=originalSubmit;
+    const skill={used:skillUsed,height:skillTarget.height,cooldown:B.player.skillCd,submitCalls};
+
+    return {checks,passed:Object.values(checks).filter(Boolean).length,total:CARDS.sina.length,skill};
+  })()`);
+  if(sinaCardAudit.total!==17||sinaCardAudit.passed!==17||!sinaCardAudit.skill.used||
+    sinaCardAudit.skill.height!==2||sinaCardAudit.skill.cooldown!==1||sinaCardAudit.skill.submitCalls!==1){
+    throw new Error(`Sina card audit failed: ${JSON.stringify(sinaCardAudit)}`);
+  }
   await client.evaluate(`B.ended=false;endBattle(1,"自动化结算")`);
   await delay(350);
   const settlementUi=await client.evaluate(`(()=>{
@@ -1281,7 +1436,7 @@ try {
 
   const runtimeErrors = client.events.filter(event => event.method === "Runtime.exceptionThrown")
     .map(event => event.params.exceptionDetails.text);
-  console.log(JSON.stringify({registration, spineRuntime, spineAssetCoverage, deck, room, battle, unitHover, spineHover, coordinateHover, wellHover, brushPreview, motionPlayback, effects, droneUi, archive, narrow, archiveResolution, archiveRules, matrixRules, crystalImmunity, areaPurgePerformance, frontierSeeking, materialEffects, fineContinuousEffects, fineCardAudit, settlementUi, spinePreview, runtimeErrors}, null, 2));
+  console.log(JSON.stringify({registration, spineRuntime, spineAssetCoverage, deck, room, battle, unitHover, spineHover, coordinateHover, wellHover, brushPreview, motionPlayback, effects, droneUi, archive, narrow, archiveResolution, archiveRules, matrixRules, crystalImmunity, areaPurgePerformance, frontierSeeking, materialEffects, fineContinuousEffects, fineCardAudit, sinaCardAudit, settlementUi, spinePreview, runtimeErrors}, null, 2));
   client.close();
 } finally {
   browser.kill();

@@ -212,7 +212,7 @@ function wellHoverDefinition(){
   return {
     role:"neutral",name:"墨井",cost:0,type:"战场设施",
     text:"周围占领环达到 66% 己方墨迹后开始占领，连续两次结算满足即可归属该阵营。敌方达到 66% 时，已占领墨井先转为中立。每口己方墨井在己方回合开始提供 1 墨水。",
-    stats:null,keywords:["区域控制"],art:{image:"images/ink_well_card_art.png",position:"center"}
+    stats:null,keywords:["区域控制"],art:{image:"images/ink_well_card_art.webp",position:"center"}
   };
 }
 

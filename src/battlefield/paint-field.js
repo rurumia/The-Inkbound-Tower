@@ -33,6 +33,10 @@
     }
 
     function sampleRaster(column, row, rasterWidth, rasterHeight) {
+      if (rasterWidth === width && rasterHeight === height && Number.isInteger(column) && Number.isInteger(row) &&
+          column >= 0 && column < width && row >= 0 && row < height) {
+        return values[row * width + column] / CONTROL_SCALE;
+      }
       const sourceColumn = Math.max(0, Math.min(width - 1, Math.floor((column + 0.5) / rasterWidth * width)));
       const sourceRow = Math.max(0, Math.min(height - 1, Math.floor((row + 0.5) / rasterHeight * height)));
       return values[sourceRow * width + sourceColumn] / CONTROL_SCALE;

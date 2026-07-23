@@ -24,7 +24,7 @@ const OWNER={N:0,P:1,E:2};
 const ROLE_DEFS={
   sina:{
     id:"sina",name:"茜娜",fallback:"茜",
-    images:{selection:"images/茜娜立绘.png",avatar:"images/茜娜头像.jpg"},
+    images:{selection:"images/茜娜立绘.webp",avatar:"images/茜娜头像.webp"},
     accent:"#9ec9ee",opponents:["fine"],
     summary:"天鹅、飞行、降落、高机动与爆发。",
     skill:{id:"tailwind",name:"起风",cooldown:1,
@@ -34,7 +34,7 @@ const ROLE_DEFS={
   },
   fine:{
     id:"fine",name:"菲涅",fallback:"菲",
-    images:{selection:"images/菲涅立绘.png",avatar:"images/菲涅头像.jpg"},
+    images:{selection:"images/菲涅立绘.webp",avatar:"images/菲涅头像.webp"},
     accent:"#d7bd78",opponents:["sina"],
     summary:"结晶化、防御、精研与资源控制。",
     skill:{id:"closeReading",name:"精读",cooldown:2,

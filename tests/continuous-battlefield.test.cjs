@@ -76,11 +76,13 @@ test("fibered ink colors and crystal materials are deterministic", () => {
   assert.equal(GameContinuousTerrainRenderer.inkEdgeMode,"brush-soft");
   assert.equal(GameContinuousTerrainRenderer.inkEdgeFeatherU,1.25);
   assert.equal(GameContinuousTerrainRenderer.battlefieldOutline,false);
-  assert.equal(GameContinuousTerrainRenderer.backgroundUrl,"images/battle_scroll_field.png");
+  assert.equal(GameContinuousTerrainRenderer.backgroundUrl,"images/battle_scroll_field.webp");
   assert.equal(GameContinuousTerrainRenderer.backgroundWidthScale,1.36);
   assert.equal(GameContinuousTerrainRenderer.backgroundHeightScale,1.16);
   assert.equal(GameContinuousTerrainRenderer.backgroundVisualScale,1.15);
   assert.equal(GameContinuousTerrainRenderer.backgroundOffsetYU,-.5);
+  assert.equal(GameContinuousTerrainRenderer.backgroundStripCount,96);
+  assert.equal(GameContinuousTerrainRenderer.materialStripHeightPx,2);
   assert.equal(GameContinuousTerrainRenderer.crystalOverflowU,.12);
   const edgeAlpha=GameContinuousTerrainRenderer.inkEdgeAlpha;
   assert.equal(edgeAlpha(0,15),0);

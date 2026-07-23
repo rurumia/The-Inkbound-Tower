@@ -10,7 +10,8 @@ const mime = {
   ".css": "text/css; charset=utf-8",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".png": "image/png"
+  ".png": "image/png",
+  ".webp": "image/webp"
 };
 
 createServer(async (request, response) => {

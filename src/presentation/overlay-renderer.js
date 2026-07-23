@@ -14,9 +14,15 @@
   }
 
   function appendProjectedCircle(context, center, radius, camera, segments = 48) {
-    const points = projectedCirclePoints(center, radius, camera, segments);
-    context.moveTo(points[0].x, points[0].y);
-    for (const point of points.slice(1)) context.lineTo(point.x, point.y);
+    for (let index = 0; index < segments; index++) {
+      const angle = index / segments * Math.PI * 2;
+      const point = camera.worldToScreen({
+        x:center.x + Math.cos(angle) * radius,
+        y:center.y + Math.sin(angle) * radius
+      });
+      if (!index) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    }
     context.closePath();
   }
 
@@ -165,7 +171,7 @@
     const camera = options.camera;
     const effectCache = new Map();
     const wellSprite = global.Image ? new global.Image() : null;
-    if (wellSprite) wellSprite.src = "images/ink_well_states_transparent.png";
+    if (wellSprite) wellSprite.src = "images/ink_well_states_transparent.webp";
 
     function circle(point, radius, fill, stroke = "#fff") {
       const screen = camera.worldToScreen(point);
@@ -197,10 +203,10 @@
       return screen;
     }
 
-    function previewUnitIds(battle) {
+    function previewUnitIds(battle, units) {
       const preview = battle._targetPreview;
       if (preview?.kind !== "circle") return new Set();
-      return new Set(battle.units.filter(unit => previewTouchesUnit(preview, unit)).map(unit => unit.id));
+      return new Set(units.filter(unit => previewTouchesUnit(preview, unit)).map(unit => unit.id));
     }
 
     function effectRegions(battle, type, cellFlag) {
@@ -323,7 +329,8 @@
       context.clearRect(0, 0, size.width, size.height);
       drawSpellBlockRegions(battle);
       drawStudyRegions(battle, now);
-      const highlightedUnits = previewUnitIds(battle);
+      const units = battle.units.filter(unit => !unit.dead);
+      const highlightedUnits = previewUnitIds(battle, units);
 
       const summonPreview = summonIntentPreview(battle);
       if (summonPreview) {
@@ -386,7 +393,7 @@
         context.moveTo(from.x, from.y); context.lineTo(to.x, to.y); context.stroke(); context.restore();
       }
 
-      for (const unit of battle.units.filter(unit => !unit.dead)) {
+      for (const unit of units) {
         const position = global.GameBattlefieldAdapter.unitPosition(unit);
         const screen = camera.worldToScreen(position);
         const scale = camera.scaleAt(position);
@@ -422,7 +429,7 @@
   global.GameContinuousOverlayRenderer = Object.freeze({
     traceShape, traceShapes, projectedCirclePoints, wellStateFrame, previewTouchesUnit,
     summonIntentPreview, summonIntentAtPoint,
-    wellSpriteUrl:"images/ink_well_states_transparent.png",
+      wellSpriteUrl:"images/ink_well_states_transparent.webp",
     wellVisualSizeU:WELL_VISUAL_SIZE_U,
     wellBillboard:true,
     wellStateTransition:false,

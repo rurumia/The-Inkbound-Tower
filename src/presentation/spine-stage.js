@@ -13,8 +13,7 @@
     const loading = new Map();
     const pendingAnimations = new Map();
 
-    function visibleUnits(battle) {
-      const now = performance.now();
+    function visibleUnits(battle, now = performance.now()) {
       return battle.units.filter(unit => !unit.dead || (unit._retainSpineUntil || 0) > now);
     }
 
@@ -56,9 +55,9 @@
       return true;
     }
 
-    function sync(battle) {
+    function sync(battle, units = visibleUnits(battle)) {
       const alive = new Set();
-      for (const unit of visibleUnits(battle)) {
+      for (const unit of units) {
         alive.add(unit.id);
         ensure(unit);
       }
@@ -71,7 +70,9 @@
     }
 
     function draw(battle, size, deltaSeconds) {
-      sync(battle);
+      const now = performance.now();
+      const units = visibleUnits(battle, now);
+      sync(battle, units);
       const ratio = size.pixelRatio;
       gl.viewport(0, 0, size.physicalWidth, size.physicalHeight);
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -79,8 +80,7 @@
       scene.camera.position.set(size.physicalWidth / 2, size.physicalHeight / 2, 0);
       scene.camera.zoom = 1;
       scene.begin();
-      const now = performance.now();
-      for (const unit of visibleUnits(battle).sort((a, b) => a.height - b.height || a.birth - b.birth)) {
+      for (const unit of units.sort((a, b) => a.height - b.height || a.birth - b.birth)) {
         const view = views.get(unit.id);
         if (!view) continue;
         if (view.until && now >= view.until) play(unit, "idle");

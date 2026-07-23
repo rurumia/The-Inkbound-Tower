@@ -4,6 +4,8 @@ import {runInNewContext} from "node:vm";
 import {fileURLToPath} from "node:url";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const WEBP_RIFF_SIGNATURE = Buffer.from("RIFF");
+const WEBP_SIGNATURE = Buffer.from("WEBP");
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const toolchainConfig = JSON.parse(await readFile(join(projectRoot, "spine.config.json"), "utf8"));
 
@@ -65,7 +67,10 @@ export async function validateProfile(profile, root = projectRoot) {
   const texture = await readFile(paths.texture);
   const preview = await readFile(paths.preview);
   if (!texture.subarray(0, 8).equals(PNG_SIGNATURE)) errors.push("texture is not a PNG file");
-  if (!preview.subarray(0, 8).equals(PNG_SIGNATURE)) errors.push("preview is not a PNG file");
+  const previewIsPng = preview.subarray(0, 8).equals(PNG_SIGNATURE);
+  const previewIsWebp = preview.subarray(0, 4).equals(WEBP_RIFF_SIGNATURE) &&
+    preview.subarray(8, 12).equals(WEBP_SIGNATURE);
+  if (!previewIsPng && !previewIsWebp) errors.push("preview is not a PNG or WebP file");
   const atlas = await readFile(paths.atlas, "utf8");
   if (!atlas.includes(profile.textureFile)) errors.push(`atlas does not reference ${profile.textureFile}`);
   return {profile, valid: errors.length === 0, errors, paths, skeleton, atlas, texture, preview};
@@ -88,8 +93,7 @@ export async function packProfiles(options = {}) {
   const assets = Object.fromEntries(results.map(result => [result.profile.assetId || result.profile.id, {
     skeleton: result.skeleton,
     atlas: result.atlas,
-    textureDataUrl: `data:image/png;base64,${result.texture.toString("base64")}`,
-    previewDataUrl: `data:image/png;base64,${result.preview.toString("base64")}`
+    textureDataUrl: `data:image/png;base64,${result.texture.toString("base64")}`
   }]));
   const source = `window.GameSpineAssets=Object.freeze(${JSON.stringify(assets)});\n`;
   await mkdir(dirname(output), {recursive: true});
