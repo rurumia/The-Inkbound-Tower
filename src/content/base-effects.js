@@ -11,7 +11,7 @@ function executeCard(d,owner,target,context={}){
     const u=summonUnit(owner,d.name,target,d.stats,{sourceInstance:context.sourceInstance});
     if(!u)return;
 
-    if(d.name==="流动书架")u.deployedFriendly=target.owner===owner;
+    if(d.name==="流动书架")u.deployedFriendly=continuousInkTouchesUnit(owner,u);
     return;
   }
 
@@ -26,10 +26,9 @@ function executeCard(d,owner,target,context={}){
 
   switch(d.name){
     case "紧急着陆指令":
-      B.units.filter(u=>!u.dead&&u.owner===owner&&u.height===2&&!u.cell.spellBlocked).forEach(u=>{
-        landUnit(u);
-        cellsRadius(u.cell,1).filter(x=>!x.spellBlocked)
-          .forEach(x=>paintCell(x,owner,{source:"card"}));
+      B.units.filter(u=>!u.dead&&u.owner===owner&&u.height===2&&!continuousSpellBlockedUnit(u)).forEach(u=>{
+        u.landingExpansionU=1;
+        try{landUnit(u)}finally{delete u.landingExpansionU}
       });
       break;
 
@@ -41,12 +40,12 @@ function executeCard(d,owner,target,context={}){
     }
 
     case "莽撞突击":
-      B.units.filter(u=>!u.dead&&u.owner===owner&&!u.cell.spellBlocked)
+      B.units.filter(u=>!u.dead&&u.owner===owner&&!continuousSpellBlockedUnit(u))
         .forEach(u=>chargeForward(u,u.move+u.bonusMove,true,1));
       break;
 
     case "全体升空！":
-      B.units.filter(u=>!u.dead&&u.owner===owner&&u.height===1&&!u.cell.spellBlocked).forEach(u=>{
+      B.units.filter(u=>!u.dead&&u.owner===owner&&u.height===1&&!continuousSpellBlockedUnit(u)).forEach(u=>{
         if(makeFlying(u,2))u.bonusMove+=2;
       });
       break;
@@ -66,21 +65,20 @@ function executeCard(d,owner,target,context={}){
     }
 
     case "乱序风暴":
-      B.units.filter(u=>!u.dead&&u.height===2&&!u.cell.spellBlocked).forEach(u=>{
+      B.units.filter(u=>!u.dead&&u.height===2&&!continuousSpellBlockedUnit(u)).forEach(u=>{
         const legal=B.cells.filter(c=>!c.air&&!c.spellBlocked);
         const dest=legal[Math.floor(B.rng()*legal.length)];
         if(dest){
           u.cell.air=null;u.cell=dest;dest.air=u;
           landUnit(u);
-          rectCells(u.cell,5).filter(x=>!x.spellBlocked)
-            .forEach(x=>paintCell(x,u.owner,{source:"card"}));
+          paintContinuousArea(u,u.owner,25,{radiusU:3,style:"fan",seed:u.id+B.global,source:"card"});
         }
       });
       break;
 
     case "索引重排":{
       const u=target.id?target:unitAt(target);
-      const origin=u.cell;
+      const originStudied=continuousRegionTouchesUnit("study",u,owner);
       const half=B.cells.filter(c=>{
         const correct=u.owner===1?c.c<30:c.c>=30;
         const slotFree=u.height===1?!c.ground&&!c.well:!c.air;
@@ -93,54 +91,56 @@ function executeCard(d,owner,target,context={}){
           else if(!dest.air){u.cell.air=null;u.cell=dest;dest.air=u}
         });
       }
-      if(origin.studied){u.rooted=true;u.skipMoveOnce=true}
+      if(originStudied){u.rooted=true;u.skipMoveOnce=true}
       break;
     }
 
     case "结晶共鸣":{
-      const crystals=B.cells.filter(c=>c.owner===owner&&c.crystal);
-      const spread=new Set();
-      crystals.forEach(c=>neighbors(c).forEach(n=>spread.add(n)));
-      spread.forEach(c=>paintCell(c,owner,{source:"card"}));
+      expandFriendlyCrystalInk(owner,1);
       break;
     }
 
     case "逻辑重构":{
       const first=target.first||target;
       const second=target.second||B.units
-        .filter(u=>!u.dead&&!u.eternal&&u.owner===owner&&u!==first&&u.height===first.height&&
-          u.cell.owner===owner&&!u.cell.spellBlocked)
+        .filter(u=>!u.dead&&!u.eternal&&u.name!=="真理之墙"&&u.owner===owner&&u!==first&&u.height===first.height&&
+          continuousInkTouchesUnit(owner,u)&&!continuousSpellBlockedUnit(u))
         .sort((a,b)=>a.birth-b.birth)[0];
       swapUnits(first,second);
       break;
     }
 
     case "“保持安静”":
-      rectCells(target,5).filter(c=>!c.spellBlocked).forEach(c=>{
-        [c.ground,c.air].filter(Boolean).forEach(u=>{
-          if(u.owner!==owner){u.skipMoveOnce=true;u.silencedOnce=true}
-          if(u.owner!==owner)u.rooted=true;
+      {
+        const shape=GameContinuousGeometry.circle(GameSpatialEffectProfiles.centerOf(target),FINE_CONTINUOUS_RADIUS.quiet);
+        B.units.filter(unit=>!unit.dead&&unit.owner!==owner).forEach(unit=>{
+          const body=unitWorldCircle(unit);
+          if(!GameContinuousGeometry.intersectsCircle(shape,body.center,body.radius))return;
+          unit.skipMoveOnce=true;unit.silencedOnce=true;unit.rooted=true;
         });
+      }
+      break;
+
+    case "噤声":{
+      const shape=GameContinuousGeometry.circle(GameSpatialEffectProfiles.centerOf(target),FINE_CONTINUOUS_RADIUS.silence);
+      addContinuousShapeRegion("spellBlock",shape,{owner,source:"card"});
+      B.cells.forEach(cell=>{
+        if(GameContinuousGeometry.containsPoint(shape,GameBattlefieldAdapter.cellToWorld(cell)))cell.spellBlocked=true;
       });
       break;
-
-    case "噤声":
-      rectCells(target,5).forEach(c=>MapRules.tryCellEffect(c,"spell-block",current=>{
-        current.spellBlocked=true;
-      },{source:"card"}));
-      break;
+    }
 
     case "奥术结晶界":{
-      const component=largestOwnedComponent(owner,true);
-      component.filter(c=>!c.spellBlocked).forEach(c=>crystallize(c));
+      crystallizeAllFriendlyInkInHalf(owner,{source:"card"});
       s.skipNext=true;
       break;
     }
 
     case "最终论文：永恒结晶":{
       const u=target.id?target:unitAt(target);
-      cellsRadius(u.cell,2).filter(c=>!c.spellBlocked).forEach(c=>crystallize(c));
+      crystallizeCompleteCircle(u,FINE_CONTINUOUS_RADIUS.eternal,{owner,source:"card"});
       u.move=0;u.attack=0;u.eternal=true;
+      u.shield++;
       u.duration=0;u.resource=false;
       u.name="最终论文：永恒结晶";
       break;
@@ -152,14 +152,15 @@ function executeCard(d,owner,target,context={}){
 function finishDive(cell){
   const {unit,inst,def}=B.selected;
   const crushable=unit.name==="重力白鹅"&&cell?.ground&&cell.ground.owner!==unit.owner&&cell.ground.hp<=2;
-  if(!cell||cell.well||cell.spellBlocked||cell.ground&&!crushable)return;
+  if(!cell||cell.well||continuousRegionAt("spellBlock",cell)||cell.ground&&!crushable)return;
   commitPlayerCard(inst,def,{unit,cell});
 }
 
 function finishSwap(target){
   const {first:a,inst,def}=B.selected;
   const b=target?(target.id?target:unitAt(target)):null;
-  if(!b||a.eternal||b.eternal||b.owner!==a.owner||b===a||b.cell.owner!==a.owner||b.cell.spellBlocked)return;
+  if(!b||a.eternal||b.eternal||a.name==="真理之墙"||b.name==="真理之墙"||b.owner!==a.owner||b===a||
+    !continuousInkTouchesUnit(a.owner,a)||!continuousInkTouchesUnit(a.owner,b)||continuousSpellBlockedUnit(b))return;
   if(a.height!==b.height)return;
   commitPlayerCard(inst,def,{first:a,second:b});
 }
@@ -173,34 +174,15 @@ function swapUnits(a,b){
   if(a.name==="真理之墙")applyWallAura(a);
   if(b.name==="真理之墙")applyWallAura(b);
   [a,b].forEach(u=>{
-    if(u.cell.studied)u.hp=Math.min(u.maxHp,u.hp+2);
+    if(continuousRegionTouchesUnit("study",u))u.hp=Math.min(u.maxHp,u.hp+2);
   });
   return true;
 }
 
 function automaticLandingTarget(u){
-  const cells=B.cells.filter(c=>!c.spellBlocked&&!c.well&&(!c.ground||
+  const cells=B.cells.filter(c=>!continuousRegionAt("spellBlock",c)&&!c.well&&(!c.ground||
     u.name==="重力白鹅"&&c.ground.owner!==u.owner&&c.ground.hp<=2));
   cells.sort((a,b)=>hexDistance(a,u.cell)-hexDistance(b,u.cell)||a.c-b.c||a.r-b.r);
   return cells[0]||null;
-}
-
-function largestOwnedComponent(owner,ownHalfOnly=false){
-  const seen=new Set(),groups=[];
-  for(const c of B.cells){
-    if(c.owner!==owner||seen.has(c)||ownHalfOnly&&(owner===1?c.c>=30:c.c<30))continue;
-    const group=[],q=[c];seen.add(c);
-    while(q.length){
-      const x=q.shift();group.push(x);
-      neighbors(x).forEach(n=>{
-        if(n.owner===owner&&!seen.has(n)&&(!ownHalfOnly||(owner===1?n.c<30:n.c>=30))){
-          seen.add(n);q.push(n);
-        }
-      });
-    }
-    groups.push(group);
-  }
-  groups.sort((a,b)=>b.length-a.length);
-  return groups[0]||[];
 }
 

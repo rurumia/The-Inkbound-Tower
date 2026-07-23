@@ -1,12 +1,17 @@
 {
   "name": "inkbound-tower-prototype",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "node tools/dev-server.mjs",
+    "image": "python tools/image-gen.py",
     "test": "node --test tests/*.test.cjs",
     "smoke": "node tools/browser-smoke.mjs",
+    "spine:doctor": "node tools/spine-toolchain.mjs",
+    "spine:normalize": "node tools/normalize-spine-exports.mjs",
     "spine:status": "node tools/spine-assets.mjs status",
     "spine:validate": "node tools/spine-assets.mjs validate",
+    "spine:pack-initial": "node tools/spine-assets.mjs pack-initial",
     "spine:pack": "node tools/spine-assets.mjs pack"
   }
 }

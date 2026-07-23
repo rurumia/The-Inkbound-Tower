@@ -19,6 +19,26 @@
   <section class="changelog" aria-label="更新日志">
     <div class="changelog-header"><h2>更新日志</h2></div>
     <article class="changelog-entry">
+      <time datetime="2026-07-23">2026-07-23 · v0.2.0 连续战场优化</time>
+      <ul>
+        <li>优化大范围空间效果与区域净化协议：使用高分辨率行区间遮罩、形状缓存和批量区域裁剪，结晶共鸣、奥术结晶界与净化带不再因后期墨迹堆积卡顿。</li>
+        <li>统一连续笔刷表现：书灵移动使用平滑曲线，笔刷法线连续跟随路径，加入线性笔压、类别笔刷和高分辨率涂色；墨迹边缘改为柔边毛笔效果。</li>
+        <li>完成卷轴战场视觉整合：卷轴背景、近大远小透视、圆形判定投影、Spine 书灵与墨井 billboard 显示、墨井状态切换及结算界面缩放。</li>
+        <li>补全连续空间卡牌规则：精研、噤声、永恒结晶、真理之墙和结晶效果均使用圆形或连续墨迹区域；真理之墙及其他结晶区域允许召唤书灵，禁法区仍禁止召唤。</li>
+        <li>新增书灵、墨井和敌方召唤意图悬浮卡，显示动态攻/耐/移/涂色变化；战场左上角新增鼠标世界坐标显示，精度为 0.1U。</li>
+        <li>修复敌方召唤意图越界、失效目标不重选、归档意图阻塞普通行动及真理之墙相关召唤问题。</li>
+      </ul>
+    </article>
+    <article class="changelog-entry">
+      <time datetime="2026-07-22">2026-07-22 · v0.2.0 连续卷轴战场</time>
+      <ul>
+        <li>战场改为 60U × 30U 连续卷轴，使用 1920 × 960 高精度控制场计算占领面积、浸润与胜负。</li>
+        <li>接入 terrain、Spine、overlay 三层同步画布，书灵沿完整路径连续移动并同步落墨。</li>
+        <li>51 张卡牌和 3 个角色技能完成连续空间配置；归档目标保存定点世界坐标。</li>
+        <li>33 个书灵模板均已接入独立 Spine 资源与专属动作。</li>
+      </ul>
+    </article>
+    <article class="changelog-entry">
       <time datetime="2026-07-21">2026-07-21 · 20735 与对手选择</time>
       <ul>
         <li>新增角色 20735、归档技能、完整 17 张卡牌、专属立绘头像与卡图合集。</li>
@@ -113,9 +133,14 @@
 
   <div id="battleMain">
     <div id="fieldWrap">
-      <canvas id="battleCanvas"></canvas>
+      <canvas id="battleCanvas" data-battlefield-layer="terrain" aria-hidden="true"></canvas>
+      <canvas id="spineCanvas" data-battlefield-layer="spine" aria-hidden="true"></canvas>
+      <canvas id="overlayCanvas" data-battlefield-layer="overlay" aria-label="连续卷轴战场"></canvas>
       <div id="fieldHint">滚轮缩放 · 中键/左键空白处拖动画面 · Space 居中</div>
+      <div id="fieldCoordinates" hidden aria-live="polite"></div>
       <div id="archiveDock" class="archive-dock" hidden></div>
+      <button id="battleResultDock" class="battle-result-dock" type="button" hidden
+        onclick="restoreBattleResult()" aria-label="展开战斗结算"></button>
     </div>
     <aside id="battleSide">
       <div class="side-section">
@@ -152,12 +177,39 @@
     <div id="hand"></div>
     <div id="turnPanel"></div>
   </div>
+  <div id="unitHoverCard" class="unit-hover-card-popover" role="tooltip" hidden></div>
 </section>
 
-<div id="modal" onclick="if(event.target===this)closeModal()">
+<div id="modal" onclick="handleModalBackdropClick(event)">
   <div id="modalBox" class="modal-box"></div>
 </div>
 
+<script src="vendor/spine/spine-webgl-4.2.43.min.js"></script>
+<script src="src/content/spirit-visual-profiles.js"></script>
+<script src="dist/spine-assets.js"></script>
+<script src="src/presentation/spine-runtime-adapter.js"></script>
+<script src="src/battlefield/world-space.js"></script>
+<script src="src/battlefield/geometry.js"></script>
+<script src="src/battlefield/region-system.js"></script>
+<script src="src/battlefield/paint-field.js"></script>
+<script src="src/battlefield/collision-system.js"></script>
+<script src="src/battlefield/navigation-system.js"></script>
+<script src="src/battlefield/brush-system.js"></script>
+<script src="src/battlefield/entity-store.js"></script>
+<script src="src/battlefield/well-system.js"></script>
+<script src="src/battlefield/infiltration-system.js"></script>
+<script src="src/battlefield/territory-ai.js"></script>
+<script src="src/battlefield/battlefield-state.js"></script>
+<script src="src/battlefield/battlefield-adapter.js"></script>
+<script src="src/content/brush-profiles.js"></script>
+<script src="src/content/spatial-effect-profiles.js"></script>
+<script src="src/presentation/camera-2d.js"></script>
+<script src="src/presentation/battlefield-stage.js"></script>
+<script src="src/presentation/terrain-renderer.js"></script>
+<script src="src/presentation/spine-stage.js"></script>
+<script src="src/presentation/overlay-renderer.js"></script>
+<script src="src/presentation/action-sequencer.js"></script>
+<script src="src/presentation/brush-motion.js"></script>
 <script src="src/engine/effect-registry.js"></script>
 <script src="src/engine/archive-system.js"></script>
 <script src="src/engine/archive-target-snapshot.js"></script>

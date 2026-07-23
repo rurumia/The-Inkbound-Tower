@@ -54,6 +54,11 @@ function startBattle(){
     camera:{scale:1,ox:0,oy:0},
     dirty:true
   };
+  const continuousRegions=GameContinuousRegions.create();
+  B.spatial={
+    regions:continuousRegions,
+    paint:GamePaintField.create({regions:continuousRegions})
+  };
 
   generateWells();
   spawnInitialUnits();

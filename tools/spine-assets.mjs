@@ -1,10 +1,11 @@
-import {readFile, stat, writeFile} from "node:fs/promises";
-import {resolve, join} from "node:path";
+import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
+import {dirname, resolve, join} from "node:path";
 import {runInNewContext} from "node:vm";
 import {fileURLToPath} from "node:url";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const toolchainConfig = JSON.parse(await readFile(join(projectRoot, "spine.config.json"), "utf8"));
 
 export async function loadProfiles(root = projectRoot) {
   const source = await readFile(join(root, "src/content/spirit-visual-profiles.js"), "utf8");
@@ -48,13 +49,18 @@ export async function validateProfile(profile, root = projectRoot) {
   }
   if (skeleton) {
     const version = skeleton.skeleton?.spine || "";
-    if (!/^4\.2(?:\.|$)/.test(version)) errors.push(`unsupported Spine export version: ${version || "missing"}; expected 4.2.x`);
+    if (version !== toolchainConfig.editorVersion) {
+      errors.push(`unsupported Spine export version: ${version || "missing"}; expected ${toolchainConfig.editorVersion}`);
+    }
     const bones = names(skeleton.bones);
     const slots = names(skeleton.slots);
     const animations = new Set(Object.keys(skeleton.animations || {}));
     for (const name of profile.requiredBones || []) if (!bones.has(name)) errors.push(`missing bone: ${name}`);
     for (const name of profile.requiredSlots) if (!slots.has(name)) errors.push(`missing slot: ${name}`);
-    for (const name of profile.requiredAnimations) if (!animations.has(name)) errors.push(`missing animation: ${name}`);
+    for (const name of profile.requiredAnimations) {
+      const resolved = profile.animationAliases?.[name] || name;
+      if (!animations.has(resolved)) errors.push(`missing animation: ${resolved}${resolved === name ? "" : ` (for ${name})`}`);
+    }
   }
   const texture = await readFile(paths.texture);
   const preview = await readFile(paths.preview);
@@ -74,16 +80,19 @@ export async function validateAll(options = {}) {
 export async function packProfiles(options = {}) {
   const root = options.root || projectRoot;
   const output = options.output || join(root, "dist/spine-assets.js");
-  const results = await validateAll({root, profiles: options.profiles});
+  const requestedProfiles = options.profiles || await loadProfiles(root);
+  const profiles = [...new Map(requestedProfiles.map(profile => [profile.assetId || profile.id, profile])).values()];
+  const results = await validateAll({root, profiles});
   const invalid = results.filter(result => !result.valid);
   if (invalid.length) throw new Error(invalid.map(result => `${result.profile.id}: ${result.errors.join("; ")}`).join("\n"));
-  const assets = Object.fromEntries(results.map(result => [result.profile.id, {
+  const assets = Object.fromEntries(results.map(result => [result.profile.assetId || result.profile.id, {
     skeleton: result.skeleton,
     atlas: result.atlas,
     textureDataUrl: `data:image/png;base64,${result.texture.toString("base64")}`,
     previewDataUrl: `data:image/png;base64,${result.preview.toString("base64")}`
   }]));
   const source = `window.GameSpineAssets=Object.freeze(${JSON.stringify(assets)});\n`;
+  await mkdir(dirname(output), {recursive: true});
   await writeFile(output, source, "utf8");
   return {output, count: results.length};
 }
@@ -93,6 +102,12 @@ async function main() {
   if (command === "pack") {
     const result = await packProfiles();
     console.log(`Packed ${result.count} Spine profiles to ${result.output}`);
+    return;
+  }
+  if (command === "pack-initial") {
+    const profiles = (await loadProfiles()).filter(profile => profile.id.startsWith("initial."));
+    const result = await packProfiles({profiles});
+    console.log(`Packed ${result.count} initial Spine profiles to ${result.output}`);
     return;
   }
   const results = await validateAll();

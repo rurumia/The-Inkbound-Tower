@@ -1,6 +1,8 @@
 (function createContinuousWellSystem(global) {
   "use strict";
 
+  const CAPTURE_RATIO = 0.66;
+
   function create(options) {
     const field = options.paintField;
     const entities = options.entities;
@@ -52,8 +54,8 @@
       const events = [];
       for (const well of wells) {
         const control = ringControl(well);
-        const surrounded = control.playerRatio >= 0.85 && control.enemyRatio < 0.05 ? 1 :
-          control.enemyRatio >= 0.85 && control.playerRatio < 0.05 ? 2 : 0;
+        const surrounded = control.playerRatio + 1e-9 >= CAPTURE_RATIO ? 1 :
+          control.enemyRatio + 1e-9 >= CAPTURE_RATIO ? 2 : 0;
         if (!surrounded) {
           well.pendingOwner = 0;
           continue;
@@ -86,5 +88,5 @@
     return Object.freeze({generate, ringControl, update, income, list});
   }
 
-  global.GameContinuousWells = Object.freeze({create});
+  global.GameContinuousWells = Object.freeze({captureRatio: CAPTURE_RATIO, create});
 })(window);

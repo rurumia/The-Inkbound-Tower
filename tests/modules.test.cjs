@@ -24,6 +24,16 @@ load("src/engine/map-rules.js");
 load("src/content/character-20735.js");
 load("src/content/effects-20735.js");
 
+global.window=global;
+load("src/engine/opponent-ai.js");
+
+test("enemy archive cadence leaves alternating turns for normal intents", () => {
+  assert.equal(GameOpponentIntentRules.shouldEnemyArchive(1),true);
+  assert.equal(GameOpponentIntentRules.shouldEnemyArchive(3),false);
+  assert.equal(GameOpponentIntentRules.shouldEnemyArchive(5),true);
+  assert.equal(GameOpponentIntentRules.shouldEnemyArchive(7),false);
+});
+
 test("crystal tiles reject ownership changes and every later cell effect", () => {
   const rules = GameMapRulesSystem.createDefault();
   const cell = {owner: 2, crystal: true, studied: false, spellBlocked: false};
@@ -44,22 +54,20 @@ test("non-crystal tiles still accept normal cell effects", () => {
   assert.equal(cell.studied, true);
 });
 
-test("area purge preserves crystal tiles while still pushing units standing on them", () => {
-  const rules = GameMapRulesSystem.createDefault();
+test("area purge neutralizes one continuous band and pushes every intersecting unit", () => {
   const crystalUnit = {id: 1};
   const normalUnit = {id: 2};
-  const crystal = {c: 4, owner: 2, crystal: true, spellBlocked: false, ground: crystalUnit, air: null};
-  const normal = {c: 5, owner: 2, crystal: false, spellBlocked: false, ground: normalUnit, air: null};
-  const pushed = [];
+  const pushed = [], applied = [];
+  const shape = {kind: "rect", center: {x: 5, y: 15}, width: 10, height: 30};
   const api = {
-    cells: () => [crystal, normal],
-    neutralize: cell => rules.tryCellEffect(cell, "neutralize", current => { current.owner = 0; }, {source: "card"}),
+    spatialShape: () => shape,
+    applySpatialEffect: (name, target, operation) => applied.push({name, target, operation}),
+    unitsTouchingShape: target => target === shape ? [crystalUnit, normalUnit] : [],
     pushToHalfEdge: unit => pushed.push(unit)
   };
-  GameEffectRegistry.invoke("20735.area-purge", "play", {owner: 1, target: {c: 5}, api});
-  assert.equal(crystal.owner, 2);
-  assert.equal(crystal.crystal, true);
-  assert.equal(normal.owner, 0);
+  GameEffectRegistry.invoke("20735.area-purge", "play", {owner: 1, target: {x: 5, y: 12}, api});
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0].operation.mode, "neutralize");
   assert.deepEqual(pushed, [crystalUnit, normalUnit]);
 });
 
@@ -118,6 +126,22 @@ test("archive target snapshots resolve cells and live units without retargeting"
   assert.equal(GameArchiveTargetSnapshot.resolve({kind: "cell", r: 3, c: 8}, context), cell);
   assert.equal(GameArchiveTargetSnapshot.resolve({kind: "unit", unitId: 17}, context), unit);
   assert.equal(GameArchiveTargetSnapshot.resolve({kind: "unit", unitId: 99}, context), null);
+  assert.deepEqual(GameArchiveTargetSnapshot.resolve({kind:"point",x:12.25,y:8.75},context),{x:12.25,y:8.75});
+});
+
+test("archive snapshots preserve exact continuous targets for circular cards", () => {
+  const previous=global.GameSpatialEffectProfiles;
+  global.GameSpatialEffectProfiles={
+    get:name=>name==="噤声"?{target:"point"}:null,
+    centerOf:target=>({x:target.x,y:target.y})
+  };
+  try{
+    const snapshot=GameArchiveTargetSnapshot.capture({name:"噤声",target:"cell"},{x:17.125,y:9.875});
+    assert.deepEqual(snapshot,{kind:"point",x:17.125,y:9.875});
+    assert.equal(GameArchiveTargetSnapshot.describe(snapshot,{}),"坐标 17.13U, 9.88U");
+  }finally{
+    global.GameSpatialEffectProfiles=previous;
+  }
 });
 
 test("archive AI selects the first legal card by priority then deck order", () => {
@@ -210,7 +234,7 @@ test("skill-archived efficiency order does not charge its locked overload cost a
   assert.equal(GameModifierSystem.multiplier(side, "movement"), 2);
 });
 
-test("drone passive bonuses require another drone within three hexes", () => {
+test("drone passive bonuses include another drone at exactly three world units", () => {
   const unit = {id: 1, owner: 1, cell: {x: 0}, birth: 1};
   const partner = {id: 2, owner: 1, cell: {x: 3}, birth: 2};
   const api = {
@@ -223,23 +247,22 @@ test("drone passive bonuses require another drone within three hexes", () => {
   assert.equal(GameEffectRegistry.invoke("20735.mass-drone", "statModifiers", {unit, api}), null);
 });
 
-test("painting drone randomly paints two cells when a nearby drone enables it", () => {
+test("painting drone generates two square world units of continuous ink when enabled", () => {
   const unit = {id: 1, owner: 1, cell: {x: 0}, birth: 1};
   const partner = {id: 2, owner: 1, cell: {x: 3}, birth: 2};
-  const cells = Array.from({length: 4}, (_, index) => ({id: index, owner: 0}));
   const painted = [], links = [];
   const api = {
     units: () => [unit, partner],
     hasTag: candidate => candidate === partner,
     distance: (a, b) => Math.abs(a.x - b.x),
-    neighbors: () => cells,
-    random: () => 0,
-    paint: cell => painted.push(cell),
+    paintArea: (target, owner, area, context) => painted.push({target, owner, area, context}),
     showDroneLink: (from, to) => links.push([from, to])
   };
   GameEffectRegistry.invoke("20735.painting-delta", "afterUnitAct", {unit, api});
-  assert.equal(painted.length, 2);
-  assert.equal(new Set(painted).size, 2);
+  assert.equal(painted.length, 1);
+  assert.equal(painted[0].target, unit);
+  assert.equal(painted[0].area, 2);
+  assert.equal(painted[0].context.radiusU, 1.5);
   assert.deepEqual(links[0], [unit, partner]);
 });
 

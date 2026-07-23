@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>初始书灵动画预览</title>
+<link rel="stylesheet" href="src/styles/spine-preview.css">
+</head>
+<body>
+  <header class="preview-header">
+    <div>
+      <p class="preview-kicker">SPINE 4.2.43</p>
+      <h1>初始书灵动画预览</h1>
+    </div>
+    <div id="previewStatus" class="preview-status" role="status">正在加载资源</div>
+  </header>
+
+  <nav class="preview-toolbar" aria-label="动画控制">
+    <div class="animation-tabs" role="group" aria-label="全局动画">
+      <button type="button" data-global-animation="idle" class="active">待机</button>
+      <button type="button" data-global-animation="move">移动</button>
+      <button type="button" data-global-animation="attack">攻击</button>
+      <button type="button" data-global-animation="hurt">受击</button>
+      <button type="button" data-global-animation="spawn">登场</button>
+      <button type="button" data-global-animation="death">退场</button>
+    </div>
+    <div class="playback-controls">
+      <button type="button" id="pauseButton">暂停</button>
+      <label for="speedSelect">速度</label>
+      <select id="speedSelect">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+  </nav>
+
+  <main class="spirit-grid">
+    <article class="spirit-view" data-profile="initial.spreader">
+      <header><h2>扩散者</h2><select aria-label="扩散者动画"></select></header>
+      <canvas aria-label="扩散者 Spine 动画"></canvas>
+    </article>
+    <article class="spirit-view" data-profile="initial.resource">
+      <header><h2>采集者</h2><select aria-label="采集者动画"></select></header>
+      <canvas aria-label="采集者 Spine 动画"></canvas>
+    </article>
+    <article class="spirit-view" data-profile="initial.fighter">
+      <header><h2>战斗书灵</h2><select aria-label="战斗书灵动画"></select></header>
+      <canvas aria-label="战斗书灵 Spine 动画"></canvas>
+    </article>
+  </main>
+
+<script src="vendor/spine/spine-webgl-4.2.43.min.js"></script>
+<script src="src/content/spirit-visual-profiles.js"></script>
+<script src="dist/spine-assets.js"></script>
+<script src="src/presentation/spine-runtime-adapter.js"></script>
+<script src="src/presentation/spine-preview-app.js"></script>
+</body>
+</html>

@@ -98,6 +98,7 @@ h1,h2,h3,p{margin-top:0}
 .game-card.role-sina{--card-accent:#9dcceb;--card-accent-soft:#294963;--card-ink:#f2f7fa}
 .game-card.role-fine{--card-accent:#d2b46f;--card-accent-soft:#3f3540;--card-ink:#f4ecdc}
 .game-card.role-20735{--card-accent:#78d9a6;--card-accent-soft:#23443d;--card-ink:#edf8f1}
+.game-card.role-neutral{--card-accent:#c9aa62;--card-accent-soft:#403827;--card-ink:#f2ead7}
 .card-head{
   min-height:47px;display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;
   gap:8px;padding:5px 8px;background:var(--card-accent-soft);border-bottom:1px solid var(--card-accent)
@@ -107,6 +108,7 @@ h1,h2,h3,p{margin-top:0}
   color:#fff;background:#162f52;border:2px solid #b5d7ef;box-shadow:inset 0 0 0 2px #0d1b30
 }
 .role-fine .card-cost{background:#594326;border-color:#ead291;box-shadow:inset 0 0 0 2px #2d241b}
+.role-neutral .card-cost{background:#51452c;border-color:#e4cb89;box-shadow:inset 0 0 0 2px #292316}
 .card-title{margin:0;font-size:15px;line-height:1.2;letter-spacing:0;overflow-wrap:anywhere}
 .card-art{
   height:150px;flex:0 0 150px;background-color:#202735;background-image:var(--card-art);
@@ -168,7 +170,7 @@ h1,h2,h3,p{margin-top:0}
 .intent-row{display:flex;gap:5px;justify-content:center;overflow:hidden}
 .intent{
   width:31%;padding:4px;border:1px solid #65566a;background:#2a2131;
-  border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help
 }
 .intent.next{border-color:#9a859d;background:#352a3b}
 #battleMain{
@@ -178,14 +180,23 @@ h1,h2,h3,p{margin-top:0}
   position:relative;min-height:0;overflow:hidden;
   background:radial-gradient(circle,#40382a,#171716)
 }
-#battleCanvas{
-  width:100%;height:100%;display:block;cursor:crosshair
+#battleCanvas,#spineCanvas,#overlayCanvas{
+  width:100%;height:100%;display:block;position:absolute;inset:0
 }
+#battleCanvas,#spineCanvas{pointer-events:none}
+#overlayCanvas{pointer-events:auto;touch-action:none;cursor:crosshair}
 #fieldHint{
   position:absolute;left:10px;top:10px;background:#10131dcc;
   border:1px solid #566078;padding:7px 10px;border-radius:6px;
   pointer-events:none;font-size:12px
 }
+#fieldCoordinates{
+  position:absolute;left:10px;top:48px;min-width:142px;
+  background:#10131dcc;border:1px solid #566078;padding:6px 10px;
+  border-radius:6px;pointer-events:none;font-size:12px;color:#d8e4f4;
+  font-variant-numeric:tabular-nums
+}
+#fieldCoordinates[hidden]{display:none}
 #battleSide{
   display:flex;flex-direction:column;background:#121621;
   border-left:1px solid #454b60;min-height:0
@@ -201,6 +212,19 @@ h1,h2,h3,p{margin-top:0}
 #log{flex:1;overflow:auto;padding:8px;font-size:12px;line-height:1.55;color:#c7c6cc}
 .log-p{color:#91b7ff}.log-e{color:#ff91a8}.log-s{color:#f0d07e}.log-b{color:#9ce6b4}
 .enhanced-stat{color:#ff5d68;font-weight:800}
+.unit-hover-card-popover{
+  position:fixed;z-index:40;width:min(238px,calc(100vw - 16px));height:min(360px,calc(100vh - 16px));
+  pointer-events:none;filter:drop-shadow(0 16px 24px #000a)
+}
+.unit-hover-card-popover[hidden]{display:none}
+.unit-hover-game-card{width:100%;height:100%;box-shadow:none}
+.unit-hover-game-card .card-art{height:125px;flex-basis:125px}
+.unit-hover-game-card .card-rules{min-height:56px}
+.unit-hover-game-card .card-footer{gap:7px;font-size:11px}
+.intent-hover-game-card{border-color:#9a859d}
+.unit-stat-delta{font-weight:800}
+.unit-stat-delta.positive{color:#ff5d68}
+.unit-stat-delta.negative{color:#58a9ff}
 #handArea{
   height:248px;background:linear-gradient(#121621,#090b11);
   border-top:1px solid #454b60;display:grid;
@@ -261,6 +285,18 @@ h1,h2,h3,p{margin-top:0}
   background:#202536;border:1px solid #81879b;border-radius:12px;
   box-shadow:0 25px 90px #000
 }
+.battle-result-dock{
+  position:absolute;z-index:12;top:12px;right:12px;width:min(260px,42%);padding:12px 14px;
+  text-align:left;color:#f2ead7;background:#171c28ee;border:1px solid #c4a968;border-radius:6px;
+  box-shadow:0 10px 28px #0009;cursor:pointer
+}
+.battle-result-dock b,.battle-result-dock span,.battle-result-dock small,.battle-result-dock em{display:block}
+.battle-result-dock b{font-size:18px;color:#efd995}
+.battle-result-dock span{margin-top:4px;line-height:1.3}
+.battle-result-dock small{margin-top:7px;color:#cbd1dc}
+.battle-result-dock em{margin-top:8px;color:#8ee5ae;font-size:11px;font-style:normal}
+.battle-result-scores{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
+.battle-result-scores p{margin:0;padding:9px;background:#171c28;border:1px solid #3e4659}
 .reward-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
 .reward-card{
   height:390px;cursor:pointer;transition:.15s
@@ -285,6 +321,8 @@ h1,h2,h3,p{margin-top:0}
   .opponent-panel{width:94vw}.opponent-grid{grid-template-columns:1fr}
   .card-detail-layout{grid-template-columns:1fr}.card-detail-preview{width:min(300px,100%);margin:auto}
   .reward-grid{grid-template-columns:1fr}.reward-card{height:420px}
+  .battle-result-dock{width:min(220px,70%)}
+  .battle-result-scores{grid-template-columns:1fr}
   #battleHud{height:66px;grid-template-columns:78px minmax(0,1fr) 78px;padding:4px;gap:4px}
   .hudSide,.hudMid{padding:4px;font-size:9px;overflow:hidden}.hud-portrait{display:none}.hud-copy{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.4}
   .intent-row{gap:2px}.intent{width:33%;padding:2px;font-size:9px}.hudMid>div{margin-bottom:2px!important}
@@ -295,6 +333,9 @@ h1,h2,h3,p{margin-top:0}
   #skillPanel,#turnPanel{padding:7px;overflow:auto;font-size:10px}#skillPanel h3,#turnPanel h3{font-size:14px}
   #hand{justify-content:flex-start;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}
   .hand-card{width:108px;flex:0 0 108px;height:220px}
+  .unit-hover-card-popover{width:min(190px,calc(100vw - 12px));height:min(300px,calc(100vh - 12px))}
+  .unit-hover-game-card .card-art{height:90px;flex-basis:90px}
+  .unit-hover-game-card .card-rules{font-size:10px;line-height:1.35}
 }
 @media(max-height:620px){
   #menu{justify-content:flex-start;overflow-y:auto;padding:28px 0}

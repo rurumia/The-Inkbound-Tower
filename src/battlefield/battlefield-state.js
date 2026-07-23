@@ -2,15 +2,19 @@
   "use strict";
 
   const INITIAL_TEMPLATES = Object.freeze([
-    Object.freeze({templateId: "initial.spreader", name: "Spreader", attack: 1, hp: 3, move: 2, paint: 2, ai: "avoid", brush: {id: "initial.spreader.brush", shape: "round", widthU: 1.5}}),
-    Object.freeze({templateId: "initial.resource", name: "Resource", attack: 1, hp: 4, move: 2, paint: 1, ai: "expand", brush: {id: "initial.resource.brush", shape: "round", widthU: 0.75}}),
-    Object.freeze({templateId: "initial.fighter", name: "Fighter", attack: 3, hp: 2, move: 2, paint: 1, ai: "aggressive", brush: {id: "initial.fighter.brush", shape: "round", widthU: 0.75}})
+    Object.freeze({templateId: "initial.spreader", name: "Spreader", attack: 1, hp: 3, move: 2, paint: 2, ai: "avoid", brush: {id: "initial.spreader", shape: "fan", widthU: 2, lengthRatio:1.05, widthRatio:1.2}}),
+    Object.freeze({templateId: "initial.resource", name: "Resource", attack: 1, hp: 4, move: 2, paint: 1, ai: "expand", brush: {id: "initial.resource", shape: "droplet", widthU: 1, lengthRatio:1.25, widthRatio:.82}}),
+    Object.freeze({templateId: "initial.fighter", name: "Fighter", attack: 3, hp: 2, move: 2, paint: 1, ai: "aggressive", brush: {id: "initial.fighter", shape: "blade", widthU: 1, lengthRatio:1.35, widthRatio:.72}})
   ]);
 
   function create(options = {}) {
     const random = options.random || Math.random;
     const regions = GameContinuousRegions.create();
-    const paintField = GamePaintField.create({width: options.paintWidth || 960, height: options.paintHeight || 480, regions});
+    const paintField = GamePaintField.create({
+      width: options.paintWidth || GamePaintField.defaultWidth,
+      height: options.paintHeight || GamePaintField.defaultHeight,
+      regions
+    });
     const entities = GameContinuousEntities.create();
     const collision = GameContinuousCollision.create({entities: () => entities.list()});
     const navigation = GameContinuousNavigation.create({collision});
@@ -34,7 +38,7 @@
           facing: {x: owner === 1 ? 1 : -1, y: 0},
           baseStats: {attack: template.attack, hp: template.hp, move: template.move, paint: template.paint},
           currentStats: {attack: template.attack, hp: template.hp, maxHp: template.hp, move: template.move, paint: template.paint},
-          brush: GameContinuousBrushes.define(template.brush),
+          brush: GameContinuousBrushes.define(global.GameBrushProfiles?.atRate(template.templateId,template.paint)||template.brush),
           ai: template.ai,
           statuses: []
         }));

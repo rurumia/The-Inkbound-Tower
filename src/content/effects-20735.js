@@ -88,25 +88,24 @@
   });
 
   register("patrol-a", {
-    painted({unit, cell, previousOwner, api}) {
-      if (unit.protocolComplete || previousOwner !== api.enemyOwner(unit.owner)) return;
-      unit.protocolProgress = (unit.protocolProgress || 0) + 1;
+    paintedArea({unit, enemyAreaRemoved, api}) {
+      if (unit.protocolComplete) return;
+      unit.protocolProgress = (unit.protocolProgress || 0) + enemyAreaRemoved;
       if (unit.protocolProgress < 6) return;
       unit.protocolComplete = true;
       unit.attack += 1;
-      api.neighbors(unit.cell).filter(cell => cell.owner !== unit.owner).slice(0, 3)
-        .forEach(cell => api.paint(cell, unit.owner, {source: "protocol"}));
+      api.paintArea(unit, unit.owner, 3, {source: "protocol", style: "gear", seed: unit.id});
       api.log("标准巡逻兵·A型完成回收协议。", "b");
     }
   });
 
   register("purifier-mk2", {
-    painted({unit, cell, api}) {
-      api.protectCell(cell, unit);
+    paintOperation({unit, operation, api}) {
+      api.protectShape(operation.shape, unit);
     },
-    blockedPaint({unit, count, api}) {
+    blockedPaint({unit, count = 0, area = 0, api}) {
       if (unit.protocolComplete) return;
-      unit.protocolProgress = (unit.protocolProgress || 0) + count;
+      unit.protocolProgress = (unit.protocolProgress || 0) + (area || count);
       if (unit.protocolProgress < 4) return;
       unit.protocolComplete = true;
       const temporaryBonus = unit.cooling ? 2 : 0;
@@ -135,7 +134,7 @@
       showNearbyLink(api, unit);
     },
     redirectDamage({unit, target, api}) {
-      if (target === unit || !api.hasTag(target, "无人机") || api.distance(unit.cell, target.cell) > 1) return null;
+      if (target === unit || !api.hasTag(target, "无人机") || !api.bodiesAdjacent(unit, target)) return null;
       api.showDroneLink(unit, target);
       return unit;
     },
@@ -146,8 +145,7 @@
         unit.protocolComplete = true;
         unit.maxHp += 2;
         unit.hp += 2;
-        api.neighbors(unit.cell).flatMap(cell => [cell.ground, cell.air]).filter(Boolean)
-          .filter(other => other.owner === unit.owner && api.hasTag(other, "无人机"))
+        api.units(unit.owner).filter(other => other !== unit && api.hasTag(other, "无人机") && api.bodiesAdjacent(unit, other))
           .forEach(other => {
             other.permanentMove = (other.permanentMove || 0) + 1;
             api.showDroneLink(unit, other);
@@ -166,8 +164,7 @@
     },
     afterUnitAct({unit, api}) {
       if (!showNearbyLink(api, unit)) return;
-      randomTake(api, api.neighbors(unit.cell).filter(cell => cell.owner !== unit.owner), 2)
-        .forEach(cell => api.paint(cell, unit.owner, {source: "drone"}));
+      api.paintArea(unit, unit.owner, 2, {source: "drone", style: "gear", radiusU: 1.5, seed: unit.id});
     }
   });
 
@@ -210,12 +207,9 @@
 
   register("area-purge", {
     play({owner, target, api}) {
-      const start = Math.max(0, Math.min(51, target.c - 4));
-      const area = api.cells().filter(cell => cell.c >= start && cell.c < start + 10);
-      const unitCells = area.filter(cell => !cell.spellBlocked);
-      area.forEach(cell => api.neutralize(cell));
-      const affected = new Set(unitCells.flatMap(cell => [cell.ground, cell.air]).filter(Boolean));
-      affected.forEach(unit => api.pushToHalfEdge(unit));
+      const shape = api.spatialShape("区域净化协议", target);
+      api.applySpatialEffect?.("区域净化协议",target,{owner,mode:"neutralize",kind:"effect",source:"card"});
+      api.unitsTouchingShape(shape).forEach(unit => api.pushToHalfEdge(unit));
     }
   });
 
@@ -249,7 +243,7 @@
     play({owner, target, api}) {
       api.createFortification(owner, target);
       if (api.units(owner).filter(unit => api.hasTag(unit, "无人机")).length >= 2) {
-        const second = api.neighbors(target).find(cell => api.canPlaceFortification(owner, cell));
+        const second = api.findFortificationTargetNear(owner, target);
         if (second) api.createFortification(owner, second);
       }
     }

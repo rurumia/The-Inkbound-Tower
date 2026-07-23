@@ -15,7 +15,7 @@ function updateUI(){
       ${rolePortrait(B.player.role,"hud-portrait","avatar")}
       <div class="hud-copy"><b>${ROLE_NAME[B.player.role]} · 玩家</b><br>
        墨水 ${formatInk(B.player.ink)}/${formatInk(B.player.cap)}
-       　区域 ${c.p}（${pPct}%）
+       　区域 ${c.p.toFixed(1)}U²（${pPct}%）
        　书灵 ${B.units.filter(u=>!u.dead&&u.owner===1).length}
        　归档 ${GameArchiveSystem.entries(B.player).length}</div>
     </div>`;
@@ -25,7 +25,7 @@ function updateUI(){
       ${rolePortrait(B.enemy.role,"hud-portrait","avatar")}
       <div class="hud-copy"><b>敌人 · ${ROLE_NAME[B.enemy.role]}</b><br>
        墨水 ${formatInk(B.enemy.ink)}/${formatInk(B.enemy.cap)}
-       　区域 ${c.e}（${ePct}%）
+       　区域 ${c.e.toFixed(1)}U²（${ePct}%）
        　书灵 ${B.units.filter(u=>!u.dead&&u.owner===2).length}
        　归档 ${GameArchiveSystem.entries(B.enemy).length}</div>
     </div>`;
@@ -33,12 +33,13 @@ function updateUI(){
   document.getElementById("mapStats").innerHTML=
     `完整轮：${B.round}<br>全局行动：${B.global}/${B.settlementLimit}<br>
      狂热：${B.frenzyStart}（3×：${B.fastFrenzyStart}）<br>
-     中立格：${c.n}<br>速度：${B.speed}×<br>
+     中立面积：${c.n.toFixed(1)}U²<br>速度：${B.speed}×<br>
      墨井：玩家 ${B.wells.filter(w=>w.owner===1).length} /
      敌人 ${B.wells.filter(w=>w.owner===2).length}`;
 
   document.getElementById("intentRow").innerHTML=B.intents.map((x,i)=>
-    `<div class="intent ${i===0?"next":""}" title="${x.name} · ${x.targetHint}">
+    `<div class="intent ${i===0?"next":""}" data-intent-index="${i}" data-instance-id="${x.instanceId}"
+      aria-label="敌方意图 ${i+1}：${x.name}，${x.targetHint}">
       ${i+1}. ${x.name}<br><span class="small">${x.targetHint}</span>
     </div>`).join("");
 
@@ -139,7 +140,9 @@ function previewArchiveTarget(order,active){
   const def=getDef(entry.instance),target=resolveStoredArchiveTarget(entry,1);
   const valid=def.target==="none"||validateTarget(def,1,target);
   let cell=null;
-  if(entry.targetSnapshot?.kind==="cell")cell=cellAt(entry.targetSnapshot.r,entry.targetSnapshot.c);
+  if(entry.targetSnapshot?.kind==="cell")cell=Number.isFinite(entry.targetSnapshot.x)
+    ?GameBattlefieldAdapter.worldToCell(entry.targetSnapshot,B.cells)
+    :cellAt(entry.targetSnapshot.r,entry.targetSnapshot.c);
   if(entry.targetSnapshot?.kind==="unit")cell=B.units.find(unit=>unit.id===entry.targetSnapshot.unitId)?.cell||null;
   B.archivePreview={cell,valid};
   drawBattle();

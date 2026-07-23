@@ -4,7 +4,14 @@
   function capture(def, target) {
     if (def.target === "none") return {kind: "none"};
     if (def.target === "cell" || def.target === "summon") {
-      return {kind: "cell", r: target.r, c: target.c};
+      const point = global.GameSpatialEffectProfiles?.centerOf(target);
+      const profile = global.GameSpatialEffectProfiles?.get(def.name);
+      if (def.target === "cell" && profile?.target === "point" && point) {
+        return {kind: "point", x: point.x, y: point.y};
+      }
+      return point
+        ? {kind: "cell", x: point.x, y: point.y, r: target.r, c: target.c}
+        : {kind: "cell", r: target.r, c: target.c};
     }
     if (["own", "groundOwn", "flying", "enemy"].includes(def.target)) {
       const unit = target && target.id ? target : null;
@@ -21,7 +28,13 @@
 
   function resolve(snapshot, context) {
     if (!snapshot || snapshot.kind === "none") return null;
-    if (snapshot.kind === "cell") return context.cellAt(snapshot.r, snapshot.c);
+    if (snapshot.kind === "cell") {
+      if (Number.isFinite(snapshot.x) && Number.isFinite(snapshot.y) && context.cellAtWorld) {
+        return context.cellAtWorld({x: snapshot.x, y: snapshot.y});
+      }
+      return context.cellAt(snapshot.r, snapshot.c);
+    }
+    if (snapshot.kind === "point") return {x:snapshot.x,y:snapshot.y};
     if (snapshot.kind === "unit") return context.units().find(unit => unit.id === snapshot.unitId) || null;
     if (snapshot.kind === "choice") return {...snapshot.payload};
     if (snapshot.kind === "instances") {
@@ -35,7 +48,10 @@
   function describe(snapshot, context) {
     if (!snapshot) return "发动时自动选择";
     if (snapshot.kind === "none") return "无目标";
-    if (snapshot.kind === "cell") return `格子 ${snapshot.r},${snapshot.c}`;
+    if (snapshot.kind === "cell") return Number.isFinite(snapshot.x)
+      ? `坐标 ${snapshot.x.toFixed(2)}U, ${snapshot.y.toFixed(2)}U`
+      : `格子 ${snapshot.r},${snapshot.c}`;
+    if (snapshot.kind === "point") return `坐标 ${snapshot.x.toFixed(2)}U, ${snapshot.y.toFixed(2)}U`;
     if (snapshot.kind === "unit") {
       const unit = context.units().find(candidate => candidate.id === snapshot.unitId);
       return unit ? unit.name : "目标已失效";

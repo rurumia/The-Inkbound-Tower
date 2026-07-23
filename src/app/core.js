@@ -38,8 +38,8 @@ const ROLE_DEFS={
     accent:"#d7bd78",opponents:["sina"],
     summary:"结晶化、防御、精研与资源控制。",
     skill:{id:"closeReading",name:"精读",cooldown:2,
-      description:"将半径 1 的完整 7 格设为精研区域，并为区域内己方书灵提供护盾。",
-      prompt:"点击己方控制区域中心格。"},
+      description:"将鼠标位置半径 1.5U 的完整圆形设为精研区，并为接触区域的己方书灵提供护盾。",
+      prompt:"在己方墨迹上选择圆形精研区域。"},
     traits:["结晶地块无法被任何效果影响","精研可以强化书灵","擅长建立永久控制区"]
   }
 };
@@ -194,8 +194,15 @@ function openModal(html){
 }
 
 function closeModal(){
-  document.getElementById("modal").classList.remove("open");
+  document.getElementById("modal").classList.remove("open","battle-result-open");
   modalAction=null;
+}
+
+function handleModalBackdropClick(event){
+  const modal=document.getElementById("modal");
+  if(event.target!==modal)return;
+  if(typeof minimizeBattleResult==="function"&&minimizeBattleResult())return;
+  closeModal();
 }
 
 function openHelp(){
@@ -204,12 +211,13 @@ function openHelp(){
     <p>每个行动回合只能进行一次有效操作：打出一张牌、使用技能、完成牺牲流程或结束回合。</p>
     <ul>
       <li>书灵会按照出生顺序自动移动、涂色并攻击。</li>
+      <li>涂色速率控制单个笔刷大小：1 约为 1U，2 为 2U，3 为 3U；不会额外生成左右笔刷。</li>
       <li>书灵攻击时双方同时造成伤害。</li>
       <li>每牺牲一张牌获得 0.5 墨水，每回合最多牺牲两张。</li>
-      <li>墨井被全部相邻格包围后改变归属，并在回合开始提供墨水。</li>
+      <li>墨井占领环有 66% 被同一方墨迹包围并连续满足两次后改变归属，所属方回合开始获得墨水。</li>
       <li>完整轮结束时，任一方超过 80% 区域即获胜。</li>
       <li>第 50 个行动后进入狂热，第 70 个行动后进入 3 倍速。</li>
-      <li>第 90 个行动后按格数结算，平局玩家胜利。</li>
+      <li>第 90 个行动后按连续控制面积结算，平局玩家胜利。</li>
     </ul>
     <button onclick="closeModal()">关闭</button>
   `);

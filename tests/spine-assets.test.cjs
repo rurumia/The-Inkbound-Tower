@@ -19,7 +19,7 @@ async function fixture() {
     requiredAnimations: ["spawn", "idle", "move", "attack", "hurt", "death"]
   };
   const skeleton = {
-    skeleton: {spine: "4.2.50"},
+    skeleton: {spine: "4.2.43"},
     bones: [{name: "root"}],
     slots: [{name: "brush_anchor", bone: "root"}, {name: "hit_anchor", bone: "root"}],
     animations: Object.fromEntries(profile.requiredAnimations.map(name => [name, {}]))
@@ -40,10 +40,12 @@ test("Spine asset validation enforces version, slots, and animations", async () 
     const skeletonPath = path.join(data.directory, "skeleton.json");
     const skeleton = JSON.parse(await readFile(skeletonPath, "utf8"));
     delete skeleton.animations.attack;
+    skeleton.skeleton.spine = "4.2.44";
     await writeFile(skeletonPath, JSON.stringify(skeleton));
     const invalid = await module.validateProfile(data.profile, data.root);
     assert.equal(invalid.valid, false);
     assert.ok(invalid.errors.includes("missing animation: attack"));
+    assert.ok(invalid.errors.some(error => error.includes("expected 4.2.43")));
   } finally {
     await rm(data.root, {recursive: true, force: true});
   }
@@ -53,7 +55,7 @@ test("Spine packer emits a classic file-compatible asset bundle", async () => {
   const module = await import(pathToFileURL(path.join(__dirname, "../tools/spine-assets.mjs")));
   const data = await fixture();
   try {
-    const output = path.join(data.root, "spine-assets.js");
+    const output = path.join(data.root, "dist", "spine-assets.js");
     const result = await module.packProfiles({root: data.root, profiles: [data.profile], output});
     assert.equal(result.count, 1);
     const source = await readFile(output, "utf8");

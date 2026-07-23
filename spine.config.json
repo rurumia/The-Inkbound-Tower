@@ -1,0 +1,7 @@
+{
+  "editorVersion": "4.2.43",
+  "runtimeVersion": "4.2.43",
+  "runtimeFile": "vendor/spine/spine-webgl-4.2.43.min.js",
+  "runtimeSha256": "4CB43E0B815869CE45A3DC6CDAB4A7FF68EEB432DF3D24A7E34C919F3D46A771",
+  "runtimeLicense": "vendor/spine/LICENSE"
+}

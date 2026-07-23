@@ -2,6 +2,16 @@
   "use strict";
 
   const BASE_ANIMATIONS = Object.freeze(["spawn", "idle", "move", "attack", "hurt", "death"]);
+  const SPREADER_ANIMATION_ALIASES = Object.freeze({
+    takeoff: "spawn",
+    fly: "move",
+    land: "idle",
+    ability: "attack",
+    cast: "attack",
+    shield: "attack",
+    disabled: "idle",
+    transform: "attack"
+  });
   const INITIAL = [
     ["initial.spreader", "Spreader"],
     ["initial.resource", "Resource", ["ability"]],
@@ -44,10 +54,16 @@
     ["20735.repair-omega", "修复无人机·Ω型", ["ability"]]
   ];
 
-  const profiles = [...INITIAL, ...SINA, ...FINE, ...ROLE_20735].map(([id, name, extra = []]) => Object.freeze({
+  const profiles = [...INITIAL, ...SINA, ...FINE, ...ROLE_20735].map(([id, name, extra = []]) => {
+    const assetId = id;
+    const aliases = {...SPREADER_ANIMATION_ALIASES};
+    for (const animation of extra) delete aliases[animation];
+    const animationAliases = Object.freeze(aliases);
+    return Object.freeze({
     id,
     name,
-    assetRoot: `assets/spine/${id}`,
+    assetId,
+    assetRoot: `assets/spine/${assetId}`,
     skeletonFile: "skeleton.json",
     atlasFile: "skeleton.atlas",
     textureFile: "texture.png",
@@ -56,14 +72,23 @@
     requiredSlots: Object.freeze(["shadow_anchor", "brush_anchor", "hit_anchor", "status_anchor", "selection_anchor"]),
     requiredAnimations: Object.freeze([...new Set([...BASE_ANIMATIONS, ...extra])]),
     scale: 1,
-    groundOffsetU: 0
-  }));
+    battleScale: id.startsWith("initial.") ? 1 : 2.5,
+    groundOffsetU: 0,
+    animationAliases
+  });
+  });
   const byId = new Map(profiles.map(profile => [profile.id, profile]));
+  const byName = new Map(profiles.map(profile => [profile.name, profile]));
   if (byId.size !== profiles.length) throw new Error("Duplicate spirit visual profile id.");
 
   global.GameSpiritVisualProfiles = Object.freeze({
     baseAnimations: BASE_ANIMATIONS,
     all: () => profiles.slice(),
-    get: id => byId.get(id) || null
+    get: id => byId.get(id) || null,
+    getByName: name => byName.get(name) || null,
+    resolveAnimation(profileOrId, animation) {
+      const profile = typeof profileOrId === "string" ? byId.get(profileOrId) : profileOrId;
+      return profile?.animationAliases?.[animation] || animation;
+    }
   });
 })(window);

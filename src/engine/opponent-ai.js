@@ -39,6 +39,30 @@ function lockIntentTarget(d,owner,reservedSummons=new Set()){
   return CardAI.bestPlay(d,owner,reservedSummons)?.target;
 }
 
+function refreshSummonIntents(){
+  const reservedSummons=new Set();
+  for(const intent of B.intents){
+    if(intent.cardTarget!=="summon")continue;
+    const inst=B.enemy.hand.find(instance=>instance.id===intent.instanceId);
+    const d=inst&&getDef(inst);
+    const currentKey=intent.target&&key(intent.target.r,intent.target.c);
+    const currentValid=!!d&&!!intent.target&&!reservedSummons.has(currentKey)&&
+      validateLockedIntent(d,2,intent.target);
+    if(!currentValid){
+      const play=d&&CardAI.bestPlay(d,2,reservedSummons);
+      intent.target=play?.target;
+      intent.meaningful=!!play;
+      intent.targetHint=describeIntentTarget(d||{target:"summon"},intent.target);
+    }
+    if(intent.target)reservedSummons.add(key(intent.target.r,intent.target.c));
+  }
+  B.dirty=true;
+}
+
+function shouldEnemyArchive(globalAction){
+  return globalAction%4===1;
+}
+
 function describeIntentTarget(d,target){
   if(d.target==="none")return "无目标";
   if(d.target==="overloadChoice")return target?.payOverload?"支付过载费用":"承受跳过回合";
@@ -70,6 +94,7 @@ function validateLockedIntent(d,owner,target){
 }
 
 async function enemyAction(){
+  refreshSummonIntents();
   if(await tryEnemySkill())return;
   const intent=B.intents.shift();
   const s=B.enemy;
@@ -112,6 +137,7 @@ async function tryEnemySkill(){
   const s=B.enemy,skill=roleDef(s.role)?.skill,handler=skill&&ROLE_SKILLS[skill.id];
   if(!handler||s.skillCd>0)return false;
   if(skill.id==="archive"){
+    if(!shouldEnemyArchive(B.global))return false;
     const plan=createArchiveAiPlan(s);
     if(!plan||!handler.execute(plan,s))return false;
     s.skillCd=skill.cooldown;
@@ -198,4 +224,6 @@ async function frenzyAction(){
 function findAutoTarget(d,owner){
   return CardAI.bestPlay(d,owner)?.target;
 }
+
+window.GameOpponentIntentRules=Object.freeze({shouldEnemyArchive});
 

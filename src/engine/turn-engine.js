@@ -1,5 +1,7 @@
 "use strict";
 
+const INK_WELL_INCOME=2;
+
 /* =========================================================
    回合流程
 ========================================================= */
@@ -15,6 +17,7 @@ async function startTurn(owner){
   s.playedAggressive=false;s.bonusPlayAfterSacrifice=false;
   GameModifierSystem.startTurn(s);
   B.speed=B.global>=B.fastFrenzyStart?3:B.global>=B.frenzyStart?2:1;
+  if(owner===2&&typeof refreshSummonIntents==="function")refreshSummonIntents();
 
   if(s.skipNext||s.skipTurns>0){
     s.skipNext=false;
@@ -28,7 +31,7 @@ async function startTurn(owner){
 
   if(s.skillCd>0)s.skillCd--;
 
-  B.wells.filter(w=>w.owner===owner).forEach(()=>gainInk(s,2,"墨井"));
+  B.wells.filter(w=>w.owner===owner).forEach(()=>gainInk(s,INK_WELL_INCOME,"墨井"));
   processTurnStartResources(owner);
   processStatuses(owner);
   drawTo(s,5);
@@ -56,10 +59,10 @@ function processTurnStartResources(owner){
       case "小天鹅信使":gainInk(s,u.height===2?6:4,u.name);break;
       case "羽翼泵动站":gainInk(s,4,u.name);break;
       case "流动书架":gainInk(s,u.deployedFriendly?6:4,u.name);break;
-      case "沉思蜡烛":gainInk(s,u.cell.crystal?8:4,u.name);break;
+      case "沉思蜡烛":gainInk(s,continuousRegionTouchesUnit("crystal",u)?8:4,u.name);break;
       case "真理循环装置":gainInk(s,4,u.name);break;
       case "图书馆活化石像":
-        if(u.cell.studied)u.hp=Math.min(u.maxHp,u.hp+1);
+        if(continuousRegionTouchesUnit("study",u))u.hp=Math.min(u.maxHp,u.hp+1);
         break;
       case "最终论文：永恒结晶":
         u.shield++;gainInk(s,4,u.name);break;
@@ -146,8 +149,8 @@ function processEndResources(owner){
       if(s.landedThisTurn)u.restBonus=true;
     }
     if(u.name==="真理馆长"){
-      const n=B.cells.filter(x=>x.owner===owner&&x.crystal).length;
-      gainInk(s,Math.min(8,Math.floor(n/5)*2),u.name);
+      const area=continuousRegionArea("crystal",owner);
+      gainInk(s,Math.min(8,Math.floor(area/5)*2),u.name);
     }
     invokeUnitEffect(u,"turnEnd");
     s.activeProductionUnit=null;
@@ -199,6 +202,7 @@ function createArchiveAiPlan(s){
 function resolveStoredArchiveTarget(entry,owner){
   return GameArchiveTargetSnapshot.resolve(entry.targetSnapshot,{
     cellAt,
+    cellAtWorld:point=>GameBattlefieldAdapter.worldToCell(point,B.cells),
     units:()=>B.units.filter(unit=>!unit.dead),
     side:side(owner)
   });

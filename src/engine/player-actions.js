@@ -84,12 +84,12 @@ function cancelArchiveSelection(){
 
 function targetInstruction(d){
   const map={
-    summon:"点击己方半场的空地面格进行召唤。",
+    summon:"点击己方半场的合法连续位置进行召唤。",
     own:"点击一个己方书灵。",
     groundOwn:"点击一个地面己方书灵。",
     flying:"点击一个飞行己方书灵。",
     enemy:"点击一个敌方书灵。",
-    cell:"点击一个区域中心格。",
+    cell:"点击一个连续区域的中心点。",
     discardArchive:"从弃牌堆选择归档牌。",
     overloadChoice:"选择过载代价。"
   };
@@ -113,9 +113,10 @@ function playSelectedCard(target){
   }
   if(def.name==="逻辑重构"){
     const first=target.id?target:unitAt(target);
-    if(first.cell.owner!==1){addLog("第一个目标必须位于己方控制区。","s");return false}
+    if(first.name==="真理之墙"){addLog("真理之墙固定在原位，不能交换。","s");return false}
+    if(!continuousInkTouchesUnit(1,first)){addLog("第一个目标必须接触己方墨迹。","s");return false}
     B.selected={kind:"swap",inst,def,first};
-    document.getElementById("selectionInfo").innerHTML="<b>逻辑重构</b><br>请选择同高度、位于己方控制区的第二个己方书灵。";
+    document.getElementById("selectionInfo").innerHTML="<b>逻辑重构</b><br>请选择同高度、接触己方墨迹的第二个己方书灵。";
     updateUI();
     return true;
   }
@@ -130,13 +131,19 @@ function commitPlayerCard(inst,def,target){
   s.discard.push(inst);
   drawTo(s,5);
   markCardPlayed(s,def);
-  executeCard(def,1,target,{sourceInstance:inst});
-  refundSpellSystems(1,def);
-  addLog(`玩家打出「${def.name}」。`,"p");
-  B.selected=null;
-  s.bonusPlayAfterSacrifice=false;
-  updateUI();
-  submitAction();
+  try{
+    executeCard(def,1,target,{sourceInstance:inst});
+    refundSpellSystems(1,def);
+    addLog(`玩家打出「${def.name}」。`,"p");
+  }catch(error){
+    console.error(`卡牌「${def.name}」效果解析失败`,error);
+    addLog(`「${def.name}」效果解析异常，本次操作已结束。`,"s");
+  }finally{
+    B.selected=null;
+    s.bonusPlayAfterSacrifice=false;
+    updateUI();
+    submitAction();
+  }
   return true;
 }
 
@@ -149,14 +156,25 @@ function validateTarget(d,owner,target){
     new Set(target.instances.map(instance=>instance.name)).size===target.instances.length&&
     target.instances.every(instance=>side(owner).discard.includes(instance));
 
-  if(d.target==="summon")return target.r!==undefined&&legalSummonCell(owner,target);
-  if(d.target==="cell")return target.r!==undefined&&!target.spellBlocked&&
-    (d.effectId!=="20735.defense-matrix"||canPlaceFortification(owner,target));
+  if(d.target==="summon"){
+    if(target.r===undefined||!legalSummonCell(owner,target))return false;
+    return d.name!=="真理之墙"||GameSpatialEffectProfiles.validPlacement(d.name,target);
+  }
+  if(d.target==="cell"){
+    const profile=GameSpatialEffectProfiles.get(d.name);
+    const continuousPoint=profile?.target==="point"&&Number.isFinite(target.x)&&Number.isFinite(target.y);
+    if(continuousPoint)return GameSpatialEffectProfiles.validPlacement(profile,target)&&
+      !continuousRegionAt("spellBlock",target);
+    return target.r!==undefined&&!continuousRegionAt("spellBlock",target)&&
+      (d.effectId!=="20735.defense-matrix"||canPlaceFortification(owner,target));
+  }
 
   const u=target.id?target:unitAt(target);
   if(!u||u.dead)return false;
-  if(d.type.includes("效果")&&u.cell.spellBlocked)return false;
+  if(d.type.includes("效果")&&continuousRegionTouchesUnit("spellBlock",u,null))return false;
   if((d.name==="索引重排"||d.name==="逻辑重构")&&u.eternal)return false;
+  if(d.name==="最终论文：永恒结晶"&&
+    !GameSpatialEffectProfiles.validPlacement(d.name,GameBattlefieldAdapter.unitPosition(u)))return false;
   if(d.target==="own")return u.owner===owner;
   if(d.target==="groundOwn")return u.owner===owner&&u.height===1;
   if(d.target==="flying")return u.owner===owner&&u.height===2;
@@ -242,37 +260,35 @@ const ROLE_SKILLS={
   tailwind:{
     execute(target,side){
       const u=target.id?target:unitAt(target);
-      if(!u||u.owner!==side.owner||u.height!==1||u.cell.air||u.cell.spellBlocked)return false;
+      if(!u||u.owner!==side.owner||u.height!==1||u.cell.air||continuousSpellBlockedUnit(u))return false;
       makeFlying(u,Math.max(1,Math.ceil(cardCostByUnit(u)/2)));
       return true;
     },
     aiTarget(side){
-      return B.units.filter(unit=>!unit.dead&&unit.owner===side.owner&&unit.height===1&&!unit.cell.air&&!unit.cell.spellBlocked)
+      return B.units.filter(unit=>!unit.dead&&unit.owner===side.owner&&unit.height===1&&!unit.cell.air&&!continuousSpellBlockedUnit(unit))
         .sort((a,b)=>b.move-a.move||a.birth-b.birth)[0]||null;
     }
   },
   closeReading:{
     execute(target,side){
-      const c=target.r!==undefined?target:null;
-      if(!c||c.owner!==side.owner||c.spellBlocked)return false;
-      const area=cellsRadius(c,1).filter(x=>!x.spellBlocked);
-      if(area.length!==7)return false;
-      area.forEach(x=>{
-        markStudied(x);
-        [x.ground,x.air].filter(Boolean).forEach(u=>{
-          if(u.owner===side.owner){
-            u.shield++;
-            triggerStudy(u,x,false);
-          }
-        });
-        triggerAdjacentRecorders(x,side.owner);
+      const shape=closeReadingShape(target);
+      if(!shape||!canUseCloseReadingAt(target,side)){
+        addLog("精读区域必须完整位于战场内、接触己方墨迹且不能触及噤声区。","s");
+        return false;
+      }
+      markStudyCircle(shape.center,FINE_CONTINUOUS_RADIUS.study,{source:"skill",owner:side.owner});
+      B.units.filter(unit=>!unit.dead&&unit.owner===side.owner).forEach(unit=>{
+        const body=unitWorldCircle(unit);
+        if(!GameContinuousGeometry.intersectsCircle(shape,body.center,body.radius))return;
+        unit.shield++;
+        if(continuousInkTouchesUnit(side.owner,unit))triggerStudy(unit,unit.cell,false);
       });
+      triggerAdjacentRecorders(shape,side.owner);
       return true;
     },
     aiTarget(side){
-      return B.cells.filter(cell=>cell.owner===side.owner&&!cell.spellBlocked&&cellsRadius(cell,1).length===7)
-        .sort((a,b)=>cellsRadius(b,1).filter(cell=>cell.owner===side.owner).length-
-          cellsRadius(a,1).filter(cell=>cell.owner===side.owner).length)[0]||null;
+      return B.cells.map(GameBattlefieldAdapter.cellToWorld).filter(point=>canUseCloseReadingAt(point,side))
+        .sort((a,b)=>closeReadingScore(b,side.owner)-closeReadingScore(a,side.owner))[0]||null;
     }
   },
   archive:{
@@ -285,6 +301,29 @@ const ROLE_SKILLS={
     }
   }
 };
+
+function closeReadingShape(target){
+  const center=GameSpatialEffectProfiles.centerOf(target);
+  return center?GameContinuousGeometry.circle(center,FINE_CONTINUOUS_RADIUS.study):null;
+}
+
+function closeReadingScore(target,owner){
+  const shape=closeReadingShape(target);
+  if(!shape)return -Infinity;
+  return B.units.filter(unit=>!unit.dead&&unit.owner===owner).reduce((score,unit)=>{
+    const body=unitWorldCircle(unit);
+    return score+(GameContinuousGeometry.intersectsCircle(shape,body.center,body.radius)?4:0);
+  },B.spatial.paint.analyze(shape,ownerSign(owner)).friendlyArea);
+}
+
+function canUseCloseReadingAt(target,side=B.player){
+  const shape=closeReadingShape(target);
+  if(!shape||!GameContinuousGeometry.shapeInsideWorld(shape))return false;
+  const blocked=(B.spatial?.regions?.list("spellBlock")||[]).some(region=>
+    GameContinuousGeometry.intersectsCircle(region.shape,shape.center,shape.radius)
+  );
+  return !blocked&&continuousInkTouchesCircle(side.owner,shape.center,shape.radius);
+}
 
 function useSkill(){
   if(B.busy||B.current!==1||B.player.sacrifices>0)return;
@@ -314,6 +353,7 @@ function executeSkill(target){
   s.skillCd=skill.cooldown;
   drawTo(s,5);
   B.selected=null;
+  B._targetPreview=null;
   addLog(`玩家使用角色技能「${skill.name}」。`,"p");
   submitAction();
   return true;
@@ -324,24 +364,34 @@ function cardCostByUnit(u){
 }
 
 function triggerStudy(u,studyCell=u.cell,notifyRecorders=true){
-  if(u.name==="禁咒守卫"){
+  if(u.name==="禁咒守卫"&&!u.studyResolved){
+    u.studyResolved=true;
     u.maxHp+=2;u.hp+=2;
     addLog("禁咒守卫通过精研提高了耐久上限。","b");
   }
-  if(u.name==="禁锢墨水瓶")crystallize(u.cell);
+  if(u.name==="禁锢墨水瓶")crystallizeInkInCircle(studyCell,FINE_CONTINUOUS_RADIUS.binding,{allOwners:true,owner:u.owner,source:"study"});
   if(notifyRecorders)triggerAdjacentRecorders(studyCell,u.owner);
 }
 
-function triggerAdjacentRecorders(studyCell,owner){
-  const recorders=neighbors(studyCell)
-    .flatMap(c=>[c.ground,c.air])
-    .filter(u=>u&&!u.dead&&u.owner===owner&&u.name==="奥术记录仪")
-    .sort((a,b)=>a.birth-b.birth);
+function triggerAdjacentRecorders(studyTarget,owner){
+  const studyShape=studyTarget?.kind?studyTarget:GameContinuousGeometry.circle(
+    GameSpatialEffectProfiles.centerOf(studyTarget),.52
+  );
+  const recorders=B.units.filter(unit=>!unit.dead&&unit.owner===owner&&unit.name==="奥术记录仪")
+    .filter(unit=>{
+      const body=unitWorldCircle(unit);
+      return GameContinuousGeometry.intersectsCircle(studyShape,body.center,body.radius+.25);
+    }).sort((a,b)=>a.birth-b.birth);
   recorders.forEach(u=>{
-    const blank=neighbors(u.cell)
-      .filter(c=>c.owner===0&&!c.crystal)
-      .sort((a,b)=>a.c-b.c||a.r-b.r)[0];
-    if(blank)paintCell(blank,owner);
+    const center=GameBattlefieldAdapter.unitPosition(u);
+    for(let index=0;index<16;index++){
+      const angle=index*Math.PI*2/16;
+      const point=GameWorldSpace.clampPoint({x:center.x+Math.cos(angle)*.8,y:center.y+Math.sin(angle)*.8},.6);
+      if(Math.abs(B.spatial.paint.sample(point))>.05||!B.spatial.regions.permits(point,{kind:"paint",source:"unit",owner:ownerSign(owner)}))continue;
+      paintContinuousArea(point,owner,1,{radiusU:.8,style:"page",seed:u.id+B.global+index});
+      B.dirty=true;
+      break;
+    }
   });
 }
 

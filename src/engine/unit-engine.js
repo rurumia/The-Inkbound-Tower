@@ -20,10 +20,15 @@ async function unitAct(u){
   try{
 
   if(u.name==="墨水凝固者"){
-    const area=rectCells(u.cell,3);
-    if(area.length===9&&area.every(c=>c.owner===u.owner)){
-      area.forEach(c=>crystallize(c));
-      addLog("墨水凝固者放弃移动并结晶化周围区域。","b");
+    const shape=GameContinuousGeometry.circle(
+      GameBattlefieldAdapter.unitPosition(u),FINE_CONTINUOUS_RADIUS.solidifier
+    );
+    const coverage=B.spatial.paint.analyze(shape,ownerSign(u.owner));
+    const crystal=coverage.friendlyStrongRatio>=.95
+      ?crystallizeInkInCircle(shape.center,FINE_CONTINUOUS_RADIUS.solidifier,{owner:u.owner,source:"unit"})
+      :null;
+    if(crystal){
+      addLog("墨水凝固者放弃移动并结晶化半径 1.5U 内的已有墨迹。","b");
       attackAdjacent(u);
       return;
     }
@@ -40,17 +45,58 @@ async function unitAct(u){
   const plan=planSpiritAction(u);
   if(plan.path.length===0&&u.height===1&&effectivePaint(u)>0)paintUnitCell(u,u.cell);
   let allowedSteps=plan.path.length;
-  for(let step=0;step<allowedSteps;step++){
-    const next=plan.path[step];
-    if(u.dead)break;
-    if(!canEnterCell(u,next))break;
-    const penalty=triggerFortificationEntry(u,next);
-    allowedSteps=Math.max(step,allowedSteps-penalty);
-    if(step>=allowedSteps||u.dead)break;
-    moveUnit(u,next);
-    await sleep(35/B.speed);
+  const actionDuration=Math.max(350,Math.min(1400,plan.path.length/5*1000))/B.speed;
+  const guidePoints=[u.cell,...plan.path].map(GameBattlefieldAdapter.cellToWorld);
+  const motion=GameBrushMotion.create(guidePoints,{type:movementCurveType(u),seed:u.id});
+  const paintOperations=curvePaintOperations(u,motion.points);
+  let revealedPaint=0;
+  let continuousEnemyAreaRemoved=0;
+  let traversedMotion=0;
+  let movementStarted=false;
+  try{
+    for(let step=0;step<allowedSteps;step++){
+      const next=plan.path[step];
+      if(u.dead)break;
+      if(!canEnterCell(u,next))break;
+      const penalty=triggerFortificationEntry(u,next);
+      allowedSteps=Math.max(step,allowedSteps-penalty);
+      if(step>=allowedSteps||u.dead)break;
+      const from=u.cell;
+      const segment=motion.segments[step];
+      if(!movementStarted){
+        movementStarted=true;
+        u._displayPosition=segment.points[0];
+        if(typeof playUnitAnimation==="function")playUnitAnimation(u,u.height===2?"fly":"move");
+      }
+      moveUnit(u,next,{continuousPaint:false});
+      const revealPaint=progress=>{
+        const globalProgress=motion.length?(traversedMotion+segment.length*progress)/motion.length:1;
+        while(revealedPaint<paintOperations.length&&paintOperations[revealedPaint].progress<=globalProgress+1e-9){
+          const operation=paintOperations[revealedPaint++];
+          const paintResult=B.spatial.paint.apply(operation);
+          continuousEnemyAreaRemoved+=paintResult.enemyAreaRemoved;
+          invokeUnitEffect(u,"paintOperation",{operation,result:paintResult});
+          B.dirty=true;
+        }
+      };
+      const segmentDuration=motion.length?actionDuration*segment.length/motion.length:0;
+      if(typeof animateUnitCurveSegment==="function")
+        await animateUnitCurveSegment(u,segment.points,segmentDuration,revealPaint);
+      else{
+        revealPaint(1);
+        await sleep(35/B.speed);
+      }
+      u._displayPosition=segment.points.at(-1);
+      traversedMotion+=segment.length;
+    }
+  }finally{
+    if(movementStarted){
+      delete u._displayPosition;
+      if(!u.dead&&typeof playUnitAnimation==="function")playUnitAnimation(u,"idle");
+    }
   }
   attackAdjacent(u,plan.attackTarget);
+  if(continuousEnemyAreaRemoved>0)invokeUnitEffect(u,"paintedArea",{enemyAreaRemoved:continuousEnemyAreaRemoved});
   u.silencedOnce=false;
   }finally{
     if(!u.dead)invokeUnitEffect(u,"afterUnitAct");
@@ -75,6 +121,19 @@ function movementFor(u){
 function nearestDistance(cell,list,cellFn=x=>x.cell){
   if(!list.length)return 99;
   return Math.min(...list.map(x=>hexDistance(cell,cellFn(x))));
+}
+
+function movementCurveType(unit){
+  const shape=GameBrushProfiles.forUnit(unit,effectivePaint(unit)).shape;
+  if(shape==="feather"||shape==="droplet"||shape==="fan")return "sweep";
+  if(shape==="blade"||shape==="crystal")return "arc";
+  return "flow";
+}
+
+function curvePaintOperations(unit,path){
+  if(unit.height===2||effectivePaint(unit)<=0||!B?.spatial?.paint)return [];
+  const brush=GameBrushProfiles.forUnit(unit,effectivePaint(unit));
+  return GameContinuousBrushes.operations(brush,path,unit.owner===1?1:-1);
 }
 
 function paintDetectionRadius(unit){
@@ -294,11 +353,15 @@ function compareSpiritPlans(a,b){
 }
 
 function moveUnit(u,dest,options={}){
-  const settings={paint:true,triggerStudy:true,updateFacing:true,teleport:false,...options};
+  const settings={paint:true,continuousPaint:true,triggerStudy:true,updateFacing:true,teleport:false,...options};
   const from=u.cell;
   const direction=directionBetween(from,dest);
   if(direction<0&&!settings.teleport)return false;
-  const enteredFriendlyStudy=dest.owner===u.owner&&dest.studied;
+  const origin=GameBattlefieldAdapter.cellToWorld(from);
+  const destination=GameBattlefieldAdapter.cellToWorld(dest);
+  const bodyRadius=u.body?.radius||.35;
+  const enteredStudy=!continuousRegionTouchesCircle("study",origin,bodyRadius,u.owner)&&
+    continuousRegionTouchesCircle("study",destination,bodyRadius,u.owner);
   refreshWallAura(u,()=>{
     if(u.height===1){from.ground=null;dest.ground=u}
     else{from.air=null;dest.air=u}
@@ -307,43 +370,34 @@ function moveUnit(u,dest,options={}){
 
   if(settings.updateFacing&&direction>=0)u.lastMoveDirection=direction;
   if(u.height===1&&settings.paint){
-    paintStep(u,from,dest);
+    paintStep(u,from,dest,{skipContinuous:!settings.continuousPaint});
   }
-  if(u.height===1&&settings.triggerStudy&&enteredFriendlyStudy)
+  if(u.height===1&&settings.triggerStudy&&enteredStudy)
     triggerStudy(u,dest);
   B.dirty=true;
   return true;
 }
 
-function paintStep(u,from,to){
+function paintStep(u,from,to,options={}){
   const paintRate=effectivePaint(u);
   if(u.height===2||paintRate<=0)return;
-  paintFootprint(from,to,paintRate).forEach(c=>paintUnitCell(u,c));
-  if(u.name==="禁锢墨水瓶"&&to.studied)crystallize(to);
+  paintFootprint(from,to,paintRate).forEach(c=>paintUnitCell(u,c,{skipContinuous:true}));
+  if(!options.skipContinuous)applyContinuousPaint(to,u.owner,{
+    unit:u,path:[GameBattlefieldAdapter.cellToWorld(from),GameBattlefieldAdapter.cellToWorld(to)]
+  });
 }
 
 function paintFootprint(from,to,paintRate){
   if(paintRate<=0)return [];
-  const direction=directionBetween(from,to);
-  if(direction<0)return [to];
-  const result=[to];
-  if(paintRate>=2){
-    const left=neighborInDirection(to,(direction+5)%6);
-    if(left)result.push(left);
-  }
-  if(paintRate>=3){
-    const right=neighborInDirection(to,(direction+1)%6);
-    if(right)result.push(right);
-  }
-  return [...new Set(result)];
+  return to?[to]:[];
 }
 
-function paintUnitCell(u,c){
+function paintUnitCell(u,c,context={}){
   if(!c)return;
   const previousOwner=c.owner;
-  paintCell(c,u.owner,{unit:u});
+  paintCell(c,u.owner,{unit:u,...context});
   if(c.owner===u.owner&&previousOwner!==u.owner)invokeUnitEffect(u,"painted",{cell:c,previousOwner});
-  if(u.name==="幻影孔雀")paintCell(randomNeighbor(c),u.owner);
+  if(u.name==="幻影孔雀")paintContinuousArea(c,u.owner,1,{radiusU:1,style:"feather",seed:u.id+B.global+c.r*61+c.c});
 }
 
 function paintCell(c,owner,context={}){
@@ -353,6 +407,8 @@ function paintCell(c,owner,context={}){
     return false;
   }
   MapRules.tryChangeOwner(c,owner,{kind:"paint",source:"unit",...context});
+  applyContinuousPaint(c,owner,context);
+  B.dirty=true;
   return c.owner===owner;
 }
 
@@ -361,13 +417,17 @@ function attackAdjacent(u,preferred=null){
   const targets=attackTargetsAt(u,u.cell);
   if(!targets.length)return;
   const target=preferred&&targets.includes(preferred)?preferred:selectBestAttack(u,u.cell)?.target;
-  if(target)combat(u,target);
+  if(target){
+    if(typeof playUnitAnimation==="function")playUnitAnimation(u,"attack",360/B.speed);
+    combat(u,target);
+  }
 }
 
 function damage(u,amount){
   if(u.shield>0){u.shield--;return 0}
   if(u.halfDamage)amount=Math.ceil(amount/2);
   u.hp-=amount;
+  if(amount>0&&u.hp>0&&typeof playUnitAnimation==="function")playUnitAnimation(u,"hurt",260/B.speed);
   return amount;
 }
 
@@ -436,8 +496,13 @@ function effectivePaint(unit){
 }
 
 function triggerFortificationEntry(unit,next){
+  const nextCenter=GameBattlefieldAdapter.cellToWorld(next);
+  const bodyRadius=unit.body?.radius||.35;
   const fort=B.units.filter(other=>!other.dead&&other.owner!==unit.owner&&hasTag(other,"工事"))
-    .find(other=>(other.footprint||[other.cell]).some(cell=>hexDistance(cell,next)<=1));
+    .find(other=>GameContinuousGeometry.intersectsCircle(
+      other.fortificationShape||GameContinuousGeometry.rect(GameBattlefieldAdapter.unitPosition(other),2,.8),
+      nextCenter,bodyRadius+1
+    ));
   if(!fort)return 0;
   const dealt=damage(unit,1);
   fort.hp-=1;

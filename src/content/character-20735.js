@@ -54,37 +54,37 @@
     },
     {
       id: "patrol-a", name: "标准巡逻兵·A型", cost: 2, type: "进攻书灵", target: "summon",
-      text: "攻击1、耐久2、移动3、涂色1。优先扩张己方边缘；累计夺回6个敌方格后攻击+1并立即涂色周围3格。",
+      text: "攻击1、耐久2、移动3U、涂色1。优先扩张己方边缘；累计移除6U²敌方控制后攻击+1并生成约3U²机械笔迹。",
       stats: {attack: 1, hp: 2, move: 3, paint: 1, ai: "expand"},
       tags: ["机械", "协议"], effectId: "20735.patrol-a"
     },
     {
       id: "purifier-mk2", name: "净化单元·Mk-II", cost: 4, type: "进攻书灵", target: "summon",
-      text: "攻击1、耐久3、移动2、涂色2。涂过的格子获得1回合净化层；累计阻止4格被涂色后耐久上限变为6。",
+      text: "攻击1、耐久3、移动2U、涂色2。完整移动笔迹获得1回合净化层；累计阻止4U²涂色后耐久上限变为6。",
       stats: {attack: 1, hp: 3, move: 2, paint: 2, ai: "expand"},
       tags: ["机械", "净化", "协议"], effectId: "20735.purifier-mk2"
     },
     {
       id: "mass-drone", name: "量产无人机", cost: 2, type: "进攻书灵", target: "summon",
-      text: "攻击0、耐久1、移动4、涂色0。距离3格内存在另一架己方无人机时，攻击力和涂色速率均变为1。",
+      text: "攻击0、耐久1、移动4U、涂色0。中心距离3U内存在另一架己方无人机时，攻击力和涂色速率均变为1。",
       stats: {attack: 0, hp: 1, move: 4, paint: 0, ai: "expand"},
       tags: ["无人机", "蜂群"], effectId: "20735.mass-drone"
     },
     {
       id: "interceptor-sigma", name: "拦截无人机·Σ型", cost: 4, type: "进攻书灵", target: "summon",
-      text: "攻击1、耐久3、移动5、涂色0。优先靠近友方无人机；代相邻无人机承伤并反击。距离3格内存在另一架无人机时攻击+1；累计代受2点伤害后耐久上限+2。",
+      text: "攻击1、耐久3、移动5U、涂色0。代身体相邻的无人机承伤并反击；3U内存在另一架无人机时攻击+1；累计代受2点伤害后耐久上限+2。",
       stats: {attack: 1, hp: 3, move: 5, paint: 0, ai: "guard"},
       tags: ["无人机", "护卫", "协议"], effectId: "20735.interceptor-sigma"
     },
     {
       id: "painting-delta", name: "涂装无人机·Δ型", cost: 4, type: "进攻书灵", target: "summon",
-      text: "攻击0、耐久2、移动3、涂色2。距离3格内存在另一架无人机时移动+1，并在行动结束随机扩散涂色2格。",
+      text: "攻击0、耐久2、移动3U、涂色2。3U内存在另一架无人机时移动+1U，并在行动结束生成约2U²连通机械笔迹。",
       stats: {attack: 0, hp: 2, move: 3, paint: 2, ai: "expand"},
       tags: ["无人机", "蜂群"], effectId: "20735.painting-delta"
     },
     {
       id: "repair-omega", name: "修复无人机·Ω型", cost: 5, type: "进攻书灵", target: "summon",
-      text: "攻击0、耐久3、移动4、涂色0。行动结束修复范围5内的己方书灵至其初始耐久上限；每架无人机被摧毁时至多回收1墨水。距离3格内存在其他无人机时不能被普通攻击。",
+      text: "攻击0、耐久3、移动4U、涂色0。行动结束修复中心距离5U内的己方书灵；无人机被摧毁时回收1墨水。3U内有无人机时不能被普通攻击。",
       stats: {attack: 0, hp: 3, move: 4, paint: 0, ai: "guard"},
       tags: ["无人机", "维修", "蜂群"], effectId: "20735.repair-omega"
     },
@@ -95,7 +95,7 @@
     },
     {
       id: "area-purge", name: "区域净化协议", cost: 5, type: "效果卡", target: "cell",
-      text: "将以目标列为中心的10列纵向区域重置为中立，并把其中书灵推回各自半场边缘。",
+      text: "将以目标点为中心、宽10U高30U的完整纵向带重置为中立，并把相交书灵推回各自半场边缘。",
       tags: ["协议", "区域"], effectId: "20735.area-purge"
     },
     {
@@ -110,7 +110,7 @@
     },
     {
       id: "defense-matrix", name: "防御矩阵", cost: 6, type: "效果卡", target: "cell",
-      text: "在己方控制区边缘生成占2格的防御工事。敌人进入其周围时移动-2，工事消耗1耐久并造成1伤害；控制2架无人机时额外生成1座。",
+      text: "在己方墨迹边缘生成约2U×0.8U防御工事。敌人进入外扩1U警戒区时移动-2U，工事耗1耐久并造成1伤害；有2架无人机时额外生成1座。",
       tags: ["工事", "无人机"], effectId: "20735.defense-matrix"
     },
     {
