@@ -65,3 +65,10 @@ test("Spine packer emits a classic file-compatible asset bundle", async () => {
     await rm(data.root, {recursive: true, force: true});
   }
 });
+
+test("homepage starts the packed Spine bundle without blocking menu scripts", async () => {
+  const source = await readFile(path.join(__dirname, "../index.html"), "utf8");
+  assert.match(source, /window\.GameSpineAssetsReady=new Promise/);
+  assert.match(source, /script\.async=true/);
+  assert.doesNotMatch(source, /<script src="dist\/spine-assets\.js"><\/script>/);
+});

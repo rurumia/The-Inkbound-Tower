@@ -33,6 +33,13 @@
     return asset;
   }
 
+  async function resolveAssets(options) {
+    if (options.assets !== undefined) return options.assets;
+    if (global.GameSpineAssets) return global.GameSpineAssets;
+    if (global.GameSpineAssetsReady) return global.GameSpineAssetsReady;
+    return null;
+  }
+
   function loadImage(source, ImageType = global.Image) {
     if (typeof ImageType !== "function") throw new Error("Spine textures require an Image implementation.");
     return new Promise((resolve, reject) => {
@@ -59,7 +66,7 @@
     const profiles = options.profiles || global.GameSpiritVisualProfiles;
     const profile = typeof options.profile === "string" ? profiles?.get(options.profile) : options.profile;
     if (!profile?.id) throw new Error("A registered Spine visual profile is required.");
-    const asset = requireAsset(profile, options.assets || global.GameSpineAssets);
+    const asset = requireAsset(profile, await resolveAssets(options));
     const image = await loadImage(asset.textureDataUrl, options.Image);
     const texture = new runtime.GLTexture(options.gl, image);
     const loadTexturePage = page => {

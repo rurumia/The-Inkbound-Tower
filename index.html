@@ -186,7 +186,16 @@
 
 <script src="vendor/spine/spine-webgl-4.2.43.min.js"></script>
 <script src="src/content/spirit-visual-profiles.js"></script>
-<script src="dist/spine-assets.js"></script>
+<script>
+window.GameSpineAssetsReady=new Promise((resolve,reject)=>{
+  const script=document.createElement("script");
+  script.src="dist/spine-assets.js";
+  script.async=true;
+  script.onload=()=>resolve(window.GameSpineAssets);
+  script.onerror=()=>reject(new Error("Spine assets failed to load."));
+  document.head.append(script);
+});
+</script>
 <script src="src/presentation/spine-runtime-adapter.js"></script>
 <script src="src/battlefield/world-space.js"></script>
 <script src="src/battlefield/geometry.js"></script>

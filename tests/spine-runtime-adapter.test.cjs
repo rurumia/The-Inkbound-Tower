@@ -133,3 +133,22 @@ test("Spine runtime adapter reuses a physical asset and aliases unsupported anim
   assert.deepEqual(entity.setAnimation("fly", true), {track: 0, name: "move", loop: true});
   assert.deepEqual(entity.setAnimation("ability", false), {track: 0, name: "attack", loop: false});
 });
+
+test("Spine runtime adapter waits for the background asset bundle", async () => {
+  const previousAssets = global.GameSpineAssets;
+  const previousReady = global.GameSpineAssetsReady;
+  delete global.GameSpineAssets;
+  global.GameSpineAssetsReady = Promise.resolve({[profile.id]: asset});
+  try {
+    const entity = await GameSpineRuntimeAdapter.create({
+      runtime: fakeRuntime(), gl: {}, profile, Image: FakeImage
+    });
+    assert.equal(entity.texture.image.source, asset.textureDataUrl);
+    entity.dispose();
+  } finally {
+    if (previousAssets === undefined) delete global.GameSpineAssets;
+    else global.GameSpineAssets = previousAssets;
+    if (previousReady === undefined) delete global.GameSpineAssetsReady;
+    else global.GameSpineAssetsReady = previousReady;
+  }
+});
